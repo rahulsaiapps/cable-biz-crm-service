@@ -1,0 +1,360 @@
+openapi: 3.0.3
+info:
+  title: Cable Pulse Core API
+  description: Master API Contract Blueprint for Cable Pulse CRM Flutter Client and Spring Boot Backend.
+  version: 1.0.0
+servers:
+  - url: https://api.cablepulse.com/api/v1
+    description: Production Environment Gateway
+paths:
+  /auth/token-swap:
+    post:
+      summary: Authentication Identity Token Swap Gateway
+      operationId: tokenSwap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - firebaseIdToken
+              properties:
+                firebaseIdToken:
+                  type: string
+                  example: "eyJhbGciOiJSUzI1NiIsImtpZCI6..."
+      responses:
+        '200':
+          description: Identity verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_AuthData'
+
+  /dashboard/metrics:
+    get:
+      summary: Fetch Home Dashboard Scoped Metrics
+      operationId: getDashboardMetrics
+      parameters:
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
+      responses:
+        '200':
+          description: Financial and customer metrics compiled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_DashboardData'
+
+  /workspace/customers:
+    get:
+      summary: Get Territory Workspace Customer Feed
+      operationId: getWorkspaceCustomers
+      parameters:
+        - name: locationId
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "vil_morampudi_001"
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
+      responses:
+        '200':
+          description: Collection feed entries retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_WorkspaceData'
+
+  /customers/{id}/ledger:
+    get:
+      summary: Retrieve Individual Customer Historic Account Ledger
+      operationId: getCustomerLedger
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "cust-gen-001"
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
+      responses:
+        '200':
+          description: Account billing matrix retrieved up to current month
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_LedgerData'
+
+  /customers/search:
+    get:
+      summary: Search-Driven Auto-Suggest Customer Utility
+      operationId: searchCustomers
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "Satish"
+        - name: block
+          in: query
+          required: false
+          schema:
+            type: string
+          example: "Block A"
+      responses:
+        '200':
+          description: Real-time dropdown suggestion suggestions array compiled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_SearchData'
+
+  /sync/synchronize:
+    post:
+      summary: Idempotent Background Sync Batch Processing Upload Engine
+      operationId: synchronizeOfflineQueue
+      parameters:
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRequestPayload'
+      responses:
+        '200':
+          description: Offline mutation array synchronized successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_SyncResolution'
+
+components:
+  parameters:
+    XE2EID:
+      name: X-E2E-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+    XSessionID:
+      name: X-Session-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    BaseResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-06-05T21:30:00Z"
+        status:
+          type: string
+          example: "SUCCESS"
+        error:
+          type: string
+          nullable: true
+          example: null
+
+    StandardResponse_AuthData:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                accessToken:
+                  type: string
+                accessTokenExpiresInSeconds:
+                  type: integer
+                  example: 900
+                refreshToken:
+                  type: string
+                userProfile:
+                  type: object
+                  properties:
+                    userId:
+                      type: string
+                    fullName:
+                      type: string
+                    role:
+                      type: string
+                      enum: [ROLE_OWNER, ROLE_COLLECTION_BOY]
+
+    StandardResponse_DashboardData:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                customerSummary:
+                  type: object
+                  properties:
+                    totalCustomers:
+                      type: integer
+                    pendingCustomers:
+                      type: integer
+                financialSummary:
+                  type: object
+                  nullable: true
+                  properties:
+                    amountPaid:
+                      type: number
+                    amountPending:
+                      type: number
+                    currency:
+                      type: string
+                    billingCyclePeriod:
+                      type: string
+
+    StandardResponse_WorkspaceData:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                locationId:
+                  type: string
+                locationName:
+                  type: string
+                customers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      customerId:
+                        type: string
+                      serialNumber:
+                        type: integer
+                      fullName:
+                        type: string
+                      doorNumber:
+                        type: string
+                      streetName:
+                        type: string
+                      activePlanName:
+                        type: string
+                      monthlyRate:
+                        type: number
+                      paymentStatus:
+                        type: string
+                        enum: [PAID, UNPAID, PARTIAL, COLLECTION_TODAY]
+                      balanceDue:
+                        type: number
+
+    StandardResponse_LedgerData:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                customerId:
+                  type: string
+                fullName:
+                  type: string
+                totalBalanceDue:
+                  type: number
+                ledger:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      month:
+                        type: string
+                        example: "MAY"
+                      year:
+                        type: integer
+                        example: 2026
+                      status:
+                        type: string
+                      paidAmount:
+                        type: number
+                      dueAmount:
+                        type: number
+
+    StandardResponse_SearchData:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  customerId:
+                    type: string
+                  label:
+                    type: string
+                    example: "14. K. Satish Kumar (Block A)"
+
+    SyncRequestPayload:
+      type: object
+      required:
+        - syncBatchId
+        - events
+      properties:
+        syncBatchId:
+          type: string
+          format: uuid
+        events:
+          type: array
+          items:
+            type: object
+            required:
+              - eventId
+              - actionType
+              - idempotencyToken
+              - payload
+            properties:
+              eventId:
+                type: string
+              actionType:
+                type: string
+                example: "RECORD_PAYMENT"
+              idempotencyToken:
+                type: string
+                format: uuid
+              payload:
+                type: object
+
+    StandardResponse_SyncResolution:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                syncResolution:
+                  type: object
+                  properties:
+                    processedEventIds:
+                      type: array
+                      items:
+                        type: string
+                    rejectedEventIds:
+                      type: array
+                      items:
+                        type: string
