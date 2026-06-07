@@ -41,7 +41,10 @@ public class DtoClasses {
         String activePlanName,
         BigDecimal monthlyRate,
         String paymentStatus,
-        BigDecimal balanceDue
+        BigDecimal balanceDue,
+        String connectionType,
+        String boxNumber,
+        String cardNumber
     ) {}
 
     public record WorkspaceData(
@@ -117,5 +120,51 @@ public class DtoClasses {
         String status,
         String error,
         SyncResolutionInner data
+    ) {}
+
+    public record ExpenseCreatedData(Long expenseId) {}
+
+    public record StandardResponse_ExpenseCreated(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        ExpenseCreatedData data
+    ) {}
+
+    public record SettlementCreatedData(Long settlementId) {}
+
+    public record StandardResponse_SettlementCreated(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        SettlementCreatedData data
+    ) {}
+
+    public record DailyCashSummary(
+        Double totalCollectedToday,
+        Double totalExpensedToday,
+        Double totalIspSettlementsToday,
+        Double netCashInHand
+    ) {}
+
+    public record StandardResponse_DailyCashSummaryData(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        DailyCashSummary data
+    ) {}
+
+    public record PlanItemDTO(
+        String planId,
+        String name,
+        BigDecimal price,
+        String details
+    ) {}
+
+    public record StandardResponse_PlansData(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        List<PlanItemDTO> data
     ) {}
 }

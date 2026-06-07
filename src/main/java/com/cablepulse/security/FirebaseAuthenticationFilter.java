@@ -1,5 +1,7 @@
 package com.cablepulse.security;
 
+import com.cablepulse.model.Employee;
+import com.cablepulse.repository.EmployeeRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import jakarta.servlet.FilterChain;
@@ -21,9 +23,11 @@ import java.util.Map;
 public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private final FirebaseAuth firebaseAuth;
+    private final EmployeeRepository employeeRepository;
 
-    public FirebaseAuthenticationFilter(FirebaseAuth firebaseAuth) {
+    public FirebaseAuthenticationFilter(FirebaseAuth firebaseAuth, EmployeeRepository employeeRepository) {
         this.firebaseAuth = firebaseAuth;
+        this.employeeRepository = employeeRepository;
     }
 
     @Override
@@ -61,6 +65,14 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                     if (authorities.stream().noneMatch(a -> a.getAuthority().equals("ROLE_COLLECTION_BOY"))) {
                         authorities.add(new SimpleGrantedAuthority("ROLE_COLLECTION_BOY"));
                     }
+                }
+
+                // Fall back to the persisted Employee record's role when the token carries no role claims,
+                // mirroring AuthController's role resolution so hasRole(...) checks stay consistent with /auth/token-swap
+                if (authorities.isEmpty()) {
+                    Employee employee = employeeRepository.findById(uid).orElse(null);
+                    String roleName = employee != null ? employee.getRole().name() : "OWNER";
+                    authorities.add(new SimpleGrantedAuthority("ROLE_" + roleName));
                 }
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(

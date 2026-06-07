@@ -11,8 +11,7 @@
 *.ear
 *.zip
 *.tar.gz
-*.rar
-
+*.rars
 # Maven build directory
 target/
 pom.xml.tag

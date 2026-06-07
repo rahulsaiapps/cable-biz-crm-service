@@ -13,7 +13,7 @@ public class OfflineSyncQueue {
     @Column(name = "sync_id")
     private Long syncId;
 
-    @Column(name = "idempotency_token", nullable = false, unique = true)
+    @Column(name = "idempotency_token", nullable = false, unique = true, columnDefinition = "VARCHAR")
     private UUID idempotencyToken;
 
     @Column(name = "status", nullable = false)

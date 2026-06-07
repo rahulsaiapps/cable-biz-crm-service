@@ -1,0 +1,52 @@
+@baseUrl = http://localhost:8080/api/v1
+@firebaseToken = eyJhbGciOiJSUzI1NiIsImtpZCI6Ijc5OTRiNGYzMTU2MzJiMjk3NzAwNmQ5M2U5NGIyYWNiZTMwNWZlNDYiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vY2FibGUtYml6LWNybSIsImF1ZCI6ImNhYmxlLWJpei1jcm0iLCJhdXRoX3RpbWUiOjE3ODA4NDI2NTAsInVzZXJfaWQiOiJWdzV0THZHZzZyZ1dqdGhCNjU0elkyZW9WTEkyIiwic3ViIjoiVnc1dEx2R2c2cmdXanRoQjY1NHpZMmVvVkxJMiIsImlhdCI6MTc4MDg0MjY1MiwiZXhwIjoxNzgwODQ2MjUyLCJlbWFpbCI6InJhaHVsLnNhaUBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImZpcmViYXNlIjp7ImlkZW50aXRpZXMiOnsiZW1haWwiOlsicmFodWwuc2FpQGdtYWlsLmNvbSJdfSwic2lnbl9pbl9wcm92aWRlciI6InBhc3N3b3JkIn19.TWVkkXBbunhtAqvoypu3GcsCejPKTfjTq89RFGKTDKeEYTw14XAjflUf0XdcLT18OciP6ROI2FJg06RFO7N6jEdePdOZAOTT4f9OvPrOoGSO9aTnLu_xMCChj15jZRoECDz0Gu9p2fHd-coftnEdgkHfYEgi77imyZ201wXr9g-Sr3GBtqIytJE1fUTU3_L1JivcIPeRXiBulKW6duIh47YkbPVPwe_s2D7dsh19os5UF2VkjJmtFZhyTzF-S274h0VI9h_rOzO56xCIWNXMtwtYGUdcd6g8ZVgzTlu_OkpG3n9gMxU66Y2r6jP_paJajrPf_F58BUTLuYvTd5EX-w
+@e2eId = 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+@sessionId = 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d
+
+### TEST IDENTITY SWAP GATEWAY
+POST {{baseUrl}}/auth/token-swap
+Content-Type: application/json
+
+{
+  "firebaseIdToken": "{{firebaseToken}}"
+}
+
+### FETCH DASHBOARD COUNTERS
+GET {{baseUrl}}/dashboard/metrics
+X-E2E-ID: {{e2eId}}
+X-Session-ID: {{sessionId}}
+
+### LOG OPERATIONAL EXPENSE
+POST {{baseUrl}}/transactions/expense
+X-E2E-ID: {{e2eId}}
+X-Session-ID: {{sessionId}}
+Content-Type: application/json
+
+{
+  "amount": 250.00,
+  "description": "Drop Wire 50m Patch for Block A Repair",
+  "expenseCategory": "WIRE"
+}
+
+### LOG WHOLESALE ISP VENDOR SETTLEMENT
+POST {{baseUrl}}/transactions/isp-settlement
+X-E2E-ID: {{e2eId}}
+X-Session-ID: {{sessionId}}
+Content-Type: application/json
+
+{
+  "connectionTypeName": "AP Fiber",
+  "amountPaid": 3500.00,
+  "paymentStatus": "FULL_PAYMENT",
+  "settlementNotes": "Cleared balance statement for June loop"
+}
+
+### AGGREGATE TRI-LEDGER CASH SUMMARY
+GET {{baseUrl}}/transactions/daily-summary?targetDate=2026-06-07
+X-E2E-ID: {{e2eId}}
+X-Session-ID: {{sessionId}}
+
+### SEARCH CUSTOMER LOOKUPS
+GET {{baseUrl}}/customers/search?name=Satish&block=Block A
+X-E2E-ID: {{e2eId}}
+X-Session-ID: {{sessionId}}

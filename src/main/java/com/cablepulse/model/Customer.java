@@ -37,6 +37,15 @@ public class Customer {
     @JoinColumn(name = "plan_id")
     private GlobalPlan globalPlan;
 
+    @Column(name = "connection_type")
+    private String connectionType;
+
+    @Column(name = "box_number")
+    private String boxNumber;
+
+    @Column(name = "card_number")
+    private String cardNumber;
+
     public Customer() {}
 
     public Customer(String customerId, int serialNumber, String fullName, String mobileNumber, String blockName, String doorNumber, BigDecimal customRateOverride, Territory territory, GlobalPlan globalPlan) {
@@ -49,6 +58,21 @@ public class Customer {
         this.customRateOverride = customRateOverride;
         this.territory = territory;
         this.globalPlan = globalPlan;
+    }
+
+    public Customer(String customerId, int serialNumber, String fullName, String mobileNumber, String blockName, String doorNumber, BigDecimal customRateOverride, Territory territory, GlobalPlan globalPlan, String connectionType, String boxNumber, String cardNumber) {
+        this.customerId = customerId;
+        this.serialNumber = serialNumber;
+        this.fullName = fullName;
+        this.mobileNumber = mobileNumber;
+        this.blockName = blockName;
+        this.doorNumber = doorNumber;
+        this.customRateOverride = customRateOverride;
+        this.territory = territory;
+        this.globalPlan = globalPlan;
+        this.connectionType = connectionType;
+        this.boxNumber = boxNumber;
+        this.cardNumber = cardNumber;
     }
 
     public String getCustomerId() {
@@ -121,5 +145,29 @@ public class Customer {
 
     public void setGlobalPlan(GlobalPlan globalPlan) {
         this.globalPlan = globalPlan;
+    }
+
+    public String getConnectionType() {
+        return connectionType;
+    }
+
+    public void setConnectionType(String connectionType) {
+        this.connectionType = connectionType;
+    }
+
+    public String getBoxNumber() {
+        return boxNumber;
+    }
+
+    public void setBoxNumber(String boxNumber) {
+        this.boxNumber = boxNumber;
+    }
+
+    public String getCardNumber() {
+        return cardNumber;
+    }
+
+    public void setCardNumber(String cardNumber) {
+        this.cardNumber = cardNumber;
     }
 }

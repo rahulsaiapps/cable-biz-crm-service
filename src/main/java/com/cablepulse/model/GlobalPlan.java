@@ -24,6 +24,10 @@ public class GlobalPlan {
     @JdbcTypeCode(SqlTypes.ARRAY)
     private List<String> features;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "provider_id")
+    private ConnectionProvider provider;
+
     public GlobalPlan() {}
 
     public GlobalPlan(String planId, String planName, BigDecimal monthlyRate, List<String> features) {
@@ -63,5 +67,13 @@ public class GlobalPlan {
 
     public void setFeatures(List<String> features) {
         this.features = features;
+    }
+
+    public ConnectionProvider getProvider() {
+        return provider;
+    }
+
+    public void setProvider(ConnectionProvider provider) {
+        this.provider = provider;
     }
 }

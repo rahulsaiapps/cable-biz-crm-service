@@ -1,5 +1,6 @@
 package com.cablepulse.security;
 
+import com.cablepulse.repository.EmployeeRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,9 +15,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final FirebaseAuth firebaseAuth;
+    private final EmployeeRepository employeeRepository;
 
-    public SecurityConfig(FirebaseAuth firebaseAuth) {
+    public SecurityConfig(FirebaseAuth firebaseAuth, EmployeeRepository employeeRepository) {
         this.firebaseAuth = firebaseAuth;
+        this.employeeRepository = employeeRepository;
     }
 
     @Bean
@@ -26,10 +29,10 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/auth/**").permitAll()
-                .requestMatchers("/api/v1/plans/**", "/api/v1/employees/**").hasRole("OWNER")
+                .requestMatchers("/api/v1/plans", "/api/v1/plans/**", "/api/v1/employees/**").hasRole("OWNER")
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(new FirebaseAuthenticationFilter(firebaseAuth), UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(new FirebaseAuthenticationFilter(firebaseAuth, employeeRepository), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

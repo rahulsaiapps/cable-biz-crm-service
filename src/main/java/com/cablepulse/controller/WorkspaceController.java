@@ -2,8 +2,11 @@ package com.cablepulse.controller;
 
 import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.model.Customer;
+import com.cablepulse.model.ConnectionProvider;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.repository.ConnectionProviderRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,10 +22,14 @@ public class WorkspaceController {
 
     private final CustomerRepository customerRepository;
     private final TerritoryRepository territoryRepository;
+    private final ConnectionProviderRepository connectionProviderRepository;
 
-    public WorkspaceController(CustomerRepository customerRepository, TerritoryRepository territoryRepository) {
+    public WorkspaceController(CustomerRepository customerRepository, 
+                               TerritoryRepository territoryRepository,
+                               ConnectionProviderRepository connectionProviderRepository) {
         this.customerRepository = customerRepository;
         this.territoryRepository = territoryRepository;
+        this.connectionProviderRepository = connectionProviderRepository;
     }
 
     @GetMapping("/customers")
@@ -51,7 +58,10 @@ public class WorkspaceController {
                     planName,
                     rate,
                     "UNPAID", // Default status
-                    rate      // Default balance due equal to rate
+                    rate,     // Default balance due equal to rate
+                    c.getConnectionType(),
+                    c.getBoxNumber(),
+                    c.getCardNumber()
             );
         }).collect(Collectors.toList());
 
@@ -65,4 +75,57 @@ public class WorkspaceController {
 
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/providers")
+    public ResponseEntity<StandardResponse_Providers> getProviders() {
+        List<ConnectionProvider> providers = connectionProviderRepository.findAll();
+        StandardResponse_Providers response = new StandardResponse_Providers(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                providers
+        );
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/providers")
+    public ResponseEntity<StandardResponse_Provider> createProvider(@RequestBody String name) {
+        String cleanedName = name;
+        if (name.contains("\"name\"")) {
+            int start = name.indexOf("\"name\"") + 6;
+            int colon = name.indexOf(":", start);
+            int quoteStart = name.indexOf("\"", colon);
+            int quoteEnd = name.indexOf("\"", quoteStart + 1);
+            if (quoteStart != -1 && quoteEnd != -1) {
+                cleanedName = name.substring(quoteStart + 1, quoteEnd);
+            }
+        } else if (name.startsWith("\"") && name.endsWith("\"")) {
+            cleanedName = name.substring(1, name.length() - 1);
+        }
+
+        ConnectionProvider provider = new ConnectionProvider(cleanedName);
+        ConnectionProvider saved = connectionProviderRepository.save(provider);
+
+        StandardResponse_Provider response = new StandardResponse_Provider(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                saved
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    public record StandardResponse_Providers(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        List<ConnectionProvider> data
+    ) {}
+
+    public record StandardResponse_Provider(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        ConnectionProvider data
+    ) {}
 }

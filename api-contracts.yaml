@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Cable Pulse Core API
   description: Master API Contract Blueprint for Cable Pulse CRM Flutter Client and Spring Boot Backend.
-  version: 1.0.0
+  version: 1.1.0
 servers:
   - url: https://api.cablepulse.com/api/v1
     description: Production Environment Gateway
@@ -56,7 +56,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "vil_morampudi_001"
+          example: "vil_kolamuru_001"
         - $ref: '#/components/parameters/XE2EID'
         - $ref: '#/components/parameters/XSessionID'
       responses:
@@ -66,6 +66,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StandardResponse_WorkspaceData'
+
+  /workspace/providers:
+    get:
+      summary: Fetch Active Third-Party Connection Infrastructure Lines
+      operationId: getConnectionProviders
+      responses:
+        '200':
+          description: Connection providers compiled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_ProviderListData'
+    post:
+      summary: Onboard New Third-Party Connection Infrastructure Line
+      operationId: createConnectionProvider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: "AP Fiber"
+      responses:
+        '201':
+          description: Connection line registered successfully
+
+  /plans:
+    get:
+      summary: Retrieve Global Pricing Packages Filtered by Active Provider
+      operationId: getPlansByProvider
+      parameters:
+        - name: providerName
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "AP Fiber"
+      responses:
+        '200':
+          description: Subscribed plans array packet processed cleanly
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_PlansData'
 
   /customers/{id}/ledger:
     get:
@@ -107,11 +156,106 @@ paths:
           example: "Block A"
       responses:
         '200':
-          description: Real-time dropdown suggestion suggestions array compiled
+          description: Real-time dropdown suggestions array compiled
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/StandardResponse_SearchData'
+
+  /transactions/expense:
+    post:
+      summary: Log New Outbound Local Field Operation Expense
+      operationId: logOperationalExpense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - description
+                - expenseCategory
+              properties:
+                amount:
+                  type: number
+                  example: 500.00
+                description:
+                  type: string
+                  example: "Coaxial Wire 100m Coil Purchase"
+                expenseCategory:
+                  type: string
+                  enum: [WIRE, FUEL, REPAIR, WAGES, MISC]
+                  example: "WIRE"
+      responses:
+        '201':
+          description: Operational cost saved to ledger context
+
+  /transactions/isp-settlement:
+    post:
+      summary: Log Upstream Wholesale Third-Party Provider Payout Settlement
+      operationId: logIspSettlement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - connectionTypeName
+                - amountPaid
+                - paymentStatus
+              properties:
+                connectionTypeName:
+                  type: string
+                  example: "JIO"
+                amountPaid:
+                  type: number
+                  example: 4500.00
+                paymentStatus:
+                  type: string
+                  enum: [FULL_PAYMENT, PARTIAL_PAYMENT]
+                  example: "PARTIAL_PAYMENT"
+                settlementNotes:
+                  type: string
+                  example: "Cleared part of May line rental cycle fees"
+      responses:
+        '201':
+          description: Wholesale vendor distribution data synchronized
+
+  /transactions/daily-summary:
+    get:
+      summary: Get Complete Dual-Ledger Cash Drawer Core Sum Balance
+      operationId: getDailyCashDrawerSummary
+      parameters:
+        - name: targetDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2026-06-07"
+      responses:
+        '200':
+          description: Unified financial parameters loaded cleanly
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_DailyCashSummaryData'
+
+  /saas/pricing:
+    get:
+      summary: Fetch Available App SaaS Subscription Tiers Managed by Regional Geolocation
+      operationId: getSaasPricingMatrix
+      parameters:
+        - $ref: '#/components/parameters/XUserCountryCode'
+      responses:
+        '200':
+          description: Multi-currency enterprise packaging schemas returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_SaasPricingData'
 
   /sync/synchronize:
     post:
@@ -150,6 +294,14 @@ components:
       schema:
         type: string
         format: uuid
+    XUserCountryCode:
+      name: X-User-Country-Code
+      in: header
+      required: false
+      schema:
+        type: string
+        default: "IN"
+      example: "IN"
 
   schemas:
     BaseResponse:
@@ -161,7 +313,7 @@ components:
         timestamp:
           type: string
           format: date-time
-          example: "2026-06-05T21:30:00Z"
+          example: "2026-06-07T10:30:00Z"
         status:
           type: string
           example: "SUCCESS"
@@ -251,6 +403,17 @@ components:
                         type: string
                       streetName:
                         type: string
+                      connectionType:
+                        type: string
+                        example: "AP Fiber"
+                      boxNumber:
+                        type: string
+                        nullable: true
+                        example: "STB987654"
+                      cardNumber:
+                        type: string
+                        nullable: true
+                        example: "VC11223344"
                       activePlanName:
                         type: string
                       monthlyRate:
@@ -260,6 +423,44 @@ components:
                         enum: [PAID, UNPAID, PARTIAL, COLLECTION_TODAY]
                       balanceDue:
                         type: number
+
+    StandardResponse_ProviderListData:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                    example: "AP Fiber"
+
+    StandardResponse_PlansData:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  planId:
+                    type: string
+                  name:
+                    type: string
+                    example: "Pro HD Pack"
+                  price:
+                    type: number
+                    example: 199.00
+                  details:
+                    type: string
+                    example: "Full HD & Sports Channels Pack"
 
     StandardResponse_LedgerData:
       allOf:
@@ -292,6 +493,63 @@ components:
                         type: number
                       dueAmount:
                         type: number
+
+    StandardResponse_DailyCashSummaryData:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                totalCollectedToday:
+                  type: number
+                  example: 12450.00
+                totalExpensedToday:
+                  type: number
+                  example: 700.00
+                totalIspSettlementsToday:
+                  type: number
+                  example: 4500.00
+                netCashInHand:
+                  type: number
+                  example: 7250.00
+
+    StandardResponse_SaasPricingData:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                promotionalTrialActive:
+                  type: boolean
+                  example: true
+                trialEndsAt:
+                  type: string
+                  format: date-time
+                  example: "2026-09-05T23:59:59Z"
+                currencyCode:
+                  type: string
+                  example: "INR"
+                tiers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      tierName:
+                        type: string
+                        example: "BASIC"
+                      billingCycle:
+                        type: string
+                        example: "MONTHLY"
+                      retailPrice:
+                        type: number
+                        example: 149.00
+                      discountedPrice:
+                        type: number
+                        example: 99.00
 
     StandardResponse_SearchData:
       allOf:
