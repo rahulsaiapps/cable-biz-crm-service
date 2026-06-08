@@ -10,6 +10,7 @@ import com.cablepulse.repository.IspSettlementRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -78,27 +79,30 @@ public class DailyLedgerServiceImpl implements DailyLedgerService {
         LocalDateTime end = targetDate.atTime(LocalTime.MAX);
 
         List<DailyTransaction> transactions = dailyTransactionRepository.findByRecordedAtBetween(start, end);
-        double totalCollected = transactions.stream()
-                .mapToDouble(t -> t.getAmountCollected().doubleValue())
-                .sum();
+        BigDecimal totalCollected = BigDecimal.ZERO;
+        for (DailyTransaction transaction : transactions) {
+            totalCollected = totalCollected.add(transaction.getAmountCollected());
+        }
 
         List<DailyExpense> expenses = dailyExpenseRepository.findByLoggedAtBetween(start, end);
-        double totalExpensed = expenses.stream()
-                .mapToDouble(DailyExpense::getAmount)
-                .sum();
+        BigDecimal totalExpensed = BigDecimal.ZERO;
+        for (DailyExpense expense : expenses) {
+            totalExpensed = totalExpensed.add(expense.getAmount());
+        }
 
         List<IspSettlement> settlements = ispSettlementRepository.findByTransactionDateBetween(start, end);
-        double totalSettlements = settlements.stream()
-                .mapToDouble(IspSettlement::getAmountPaid)
-                .sum();
+        BigDecimal totalSettlements = BigDecimal.ZERO;
+        for (IspSettlement settlement : settlements) {
+            totalSettlements = totalSettlements.add(settlement.getAmountPaid());
+        }
 
-        double netCash = totalCollected - totalExpensed - totalSettlements;
+        BigDecimal netCashInHand = totalCollected.subtract(totalExpensed).subtract(totalSettlements);
 
         DailyCashSummary summary = new DailyCashSummary(
                 totalCollected,
                 totalExpensed,
                 totalSettlements,
-                netCash
+                netCashInHand
         );
 
         return new StandardResponse_DailyCashSummaryData(
@@ -109,12 +113,17 @@ public class DailyLedgerServiceImpl implements DailyLedgerService {
         );
     }
 
+    private static final BigDecimal MAX_TRANSACTION_AMOUNT = new BigDecimal("10000000.00");
+
     private void validateExpense(DailyExpense expense) {
         if (expense == null) {
             throw new IllegalArgumentException("Expense payload is required");
         }
-        if (expense.getAmount() == null || expense.getAmount() <= 0) {
+        if (expense.getAmount() == null || expense.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("amount must be a positive number");
+        }
+        if (expense.getAmount().compareTo(MAX_TRANSACTION_AMOUNT) > 0) {
+            throw new IllegalArgumentException("Transaction amount exceeds maximum permissible business limit");
         }
         if (expense.getDescription() == null || expense.getDescription().isBlank()) {
             throw new IllegalArgumentException("description is required");
@@ -131,8 +140,11 @@ public class DailyLedgerServiceImpl implements DailyLedgerService {
         if (settlement.getConnectionTypeName() == null || settlement.getConnectionTypeName().isBlank()) {
             throw new IllegalArgumentException("connectionTypeName is required");
         }
-        if (settlement.getAmountPaid() == null || settlement.getAmountPaid() <= 0) {
+        if (settlement.getAmountPaid() == null || settlement.getAmountPaid().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("amountPaid must be a positive number");
+        }
+        if (settlement.getAmountPaid().compareTo(MAX_TRANSACTION_AMOUNT) > 0) {
+            throw new IllegalArgumentException("Transaction amount exceeds maximum permissible business limit");
         }
         if (settlement.getPaymentStatus() == null || settlement.getPaymentStatus().isBlank()) {
             throw new IllegalArgumentException("paymentStatus is required");

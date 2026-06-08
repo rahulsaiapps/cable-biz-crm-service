@@ -3,6 +3,7 @@ package com.cablepulse.service;
 import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.model.*;
 import com.cablepulse.repository.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,18 +20,21 @@ public class SyncServiceImpl implements SyncService {
     private final CustomerLedgerRepository customerLedgerRepository;
     private final DailyTransactionRepository dailyTransactionRepository;
     private final EmployeeRepository employeeRepository;
+    private final ObjectMapper objectMapper;
 
     public SyncServiceImpl(
             OfflineSyncQueueRepository offlineSyncQueueRepository,
             CustomerRepository customerRepository,
             CustomerLedgerRepository customerLedgerRepository,
             DailyTransactionRepository dailyTransactionRepository,
-            EmployeeRepository employeeRepository) {
+            EmployeeRepository employeeRepository,
+            ObjectMapper objectMapper) {
         this.offlineSyncQueueRepository = offlineSyncQueueRepository;
         this.customerRepository = customerRepository;
         this.customerLedgerRepository = customerLedgerRepository;
         this.dailyTransactionRepository = dailyTransactionRepository;
         this.employeeRepository = employeeRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -55,8 +59,16 @@ public class SyncServiceImpl implements SyncService {
                 rejectedEventIds.add(event.eventId());
                 continue;
             }
+            String tokenValue = token.toString();
 
-            Optional<OfflineSyncQueue> existingQueue = offlineSyncQueueRepository.findByIdempotencyToken(token);
+            String payloadBody;
+            try {
+                payloadBody = objectMapper.writeValueAsString(event.payload());
+            } catch (Exception e) {
+                payloadBody = "{}";
+            }
+
+            Optional<OfflineSyncQueue> existingQueue = offlineSyncQueueRepository.findByIdempotencyToken(tokenValue);
 
             if (existingQueue.isPresent() && "SUCCESS".equals(existingQueue.get().getStatus())) {
                 processedEventIds.add(event.eventId());
@@ -168,7 +180,7 @@ public class SyncServiceImpl implements SyncService {
                 dailyTransactionRepository.save(transaction);
 
                 // Save SUCCESS status tracker in Offline Sync Queue
-                OfflineSyncQueue queueEntry = existingQueue.orElse(new OfflineSyncQueue(token, "SUCCESS", event.eventId(), LocalDateTime.now()));
+                OfflineSyncQueue queueEntry = existingQueue.orElse(new OfflineSyncQueue(event.eventId(), tokenValue, payloadBody, "SUCCESS", LocalDateTime.now()));
                 queueEntry.setStatus("SUCCESS");
                 queueEntry.setProcessedAt(LocalDateTime.now());
                 offlineSyncQueueRepository.save(queueEntry);
@@ -177,7 +189,7 @@ public class SyncServiceImpl implements SyncService {
 
             } catch (Exception e) {
                 // If validation or database execution fails, capture and log FAILED state
-                OfflineSyncQueue queueEntry = existingQueue.orElse(new OfflineSyncQueue(token, "FAILED", event.eventId(), LocalDateTime.now()));
+                OfflineSyncQueue queueEntry = existingQueue.orElse(new OfflineSyncQueue(event.eventId(), tokenValue, payloadBody, "FAILED", LocalDateTime.now()));
                 queueEntry.setStatus("FAILED");
                 queueEntry.setProcessedAt(LocalDateTime.now());
                 offlineSyncQueueRepository.save(queueEntry);

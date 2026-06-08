@@ -150,10 +150,10 @@ public class TransactionControllerHappyPathTest {
 
     @Test
     void cashDrawerDailySummaryArithmeticVerification() throws Exception {
-        double collected = 12450.00;
-        double expensed = 700.00;
-        double settlements = 4500.00;
-        double netCash = collected - expensed - settlements; // 7250.00
+        BigDecimal collected = BigDecimal.valueOf(12450.00);
+        BigDecimal expensed = BigDecimal.valueOf(700.00);
+        BigDecimal settlements = BigDecimal.valueOf(4500.00);
+        BigDecimal netCash = collected.subtract(expensed).subtract(settlements); // 7250.00
 
         when(dailyLedgerService.getDailySummary(LocalDate.of(2026, 6, 7))).thenReturn(
                 new StandardResponse_DailyCashSummaryData(
@@ -170,10 +170,10 @@ public class TransactionControllerHappyPathTest {
                         .header(WebHeaderInterceptor.E2E_ID_HEADER, e2eId)
                         .header(WebHeaderInterceptor.SESSION_ID_HEADER, sessionId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.totalCollectedToday").value(collected))
-                .andExpect(jsonPath("$.data.totalExpensedToday").value(expensed))
-                .andExpect(jsonPath("$.data.totalIspSettlementsToday").value(settlements))
-                .andExpect(jsonPath("$.data.netCashInHand").value(netCash))
-                .andExpect(jsonPath("$.data.netCashInHand").value(collected - expensed - settlements));
+                .andExpect(jsonPath("$.data.totalCollectedToday").value(collected.doubleValue()))
+                .andExpect(jsonPath("$.data.totalExpensedToday").value(expensed.doubleValue()))
+                .andExpect(jsonPath("$.data.totalIspSettlementsToday").value(settlements.doubleValue()))
+                .andExpect(jsonPath("$.data.netCashInHand").value(netCash.doubleValue()))
+                .andExpect(jsonPath("$.data.netCashInHand").value(collected.subtract(expensed).subtract(settlements).doubleValue()));
     }
 }

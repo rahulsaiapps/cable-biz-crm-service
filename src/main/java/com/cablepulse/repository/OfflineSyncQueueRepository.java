@@ -5,10 +5,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
-public interface OfflineSyncQueueRepository extends JpaRepository<OfflineSyncQueue, Long> {
+public interface OfflineSyncQueueRepository extends JpaRepository<OfflineSyncQueue, String> {
 
-    Optional<OfflineSyncQueue> findByIdempotencyToken(UUID token);
+    Optional<OfflineSyncQueue> findByIdempotencyToken(String token);
 }

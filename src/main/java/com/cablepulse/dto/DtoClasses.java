@@ -141,10 +141,10 @@ public class DtoClasses {
     ) {}
 
     public record DailyCashSummary(
-        Double totalCollectedToday,
-        Double totalExpensedToday,
-        Double totalIspSettlementsToday,
-        Double netCashInHand
+        BigDecimal totalCollectedToday,
+        BigDecimal totalExpensedToday,
+        BigDecimal totalIspSettlementsToday,
+        BigDecimal netCashInHand
     ) {}
 
     public record StandardResponse_DailyCashSummaryData(
@@ -166,5 +166,26 @@ public class DtoClasses {
         String status,
         String error,
         List<PlanItemDTO> data
+    ) {}
+
+    public record SaasTierDTO(
+        String tierName,
+        String billingCycle,
+        Double retailPrice,
+        Double discountedPrice
+    ) {}
+
+    public record SaasPricingData(
+        boolean promotionalTrialActive,
+        LocalDateTime trialEndsAt,
+        String currencyCode,
+        List<SaasTierDTO> tiers
+    ) {}
+
+    public record StandardResponse_SaasPricingData(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        SaasPricingData data
     ) {}
 }

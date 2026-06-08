@@ -1,6 +1,8 @@
 package com.cablepulse.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.DecimalMax;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -14,8 +16,9 @@ public class IspSettlement {
     @Column(nullable = false)
     private String connectionTypeName;
 
+    @DecimalMax(value = "10000000.00", message = "Transaction amount exceeds maximum permissible business limit")
     @Column(nullable = false)
-    private Double amountPaid;
+    private BigDecimal amountPaid;
 
     @Column(nullable = false)
     private String paymentStatus;
@@ -29,7 +32,7 @@ public class IspSettlement {
     public IspSettlement() {
     }
 
-    public IspSettlement(Long id, String connectionTypeName, Double amountPaid, String paymentStatus, String settlementNotes, LocalDateTime transactionDate) {
+    public IspSettlement(Long id, String connectionTypeName, BigDecimal amountPaid, String paymentStatus, String settlementNotes, LocalDateTime transactionDate) {
         this.id = id;
         this.connectionTypeName = connectionTypeName;
         this.amountPaid = amountPaid;
@@ -38,7 +41,7 @@ public class IspSettlement {
         this.transactionDate = transactionDate;
     }
 
-    public IspSettlement(String connectionTypeName, Double amountPaid, String paymentStatus, String settlementNotes) {
+    public IspSettlement(String connectionTypeName, BigDecimal amountPaid, String paymentStatus, String settlementNotes) {
         this.connectionTypeName = connectionTypeName;
         this.amountPaid = amountPaid;
         this.paymentStatus = paymentStatus;
@@ -62,11 +65,11 @@ public class IspSettlement {
         this.connectionTypeName = connectionTypeName;
     }
 
-    public Double getAmountPaid() {
+    public BigDecimal getAmountPaid() {
         return amountPaid;
     }
 
-    public void setAmountPaid(Double amountPaid) {
+    public void setAmountPaid(BigDecimal amountPaid) {
         this.amountPaid = amountPaid;
     }
 

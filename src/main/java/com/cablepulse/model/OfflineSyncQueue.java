@@ -1,61 +1,40 @@
 package com.cablepulse.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "offline_sync_queue")
 public class OfflineSyncQueue {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "sync_id")
-    private Long syncId;
+    @Column(name = "event_id", nullable = false)
+    private String eventId;
 
-    @Column(name = "idempotency_token", nullable = false, unique = true, columnDefinition = "VARCHAR")
-    private UUID idempotencyToken;
+    @Column(name = "idempotency_token", length = 100, nullable = false, unique = true)
+    private String idempotencyToken;
+
+    @Column(name = "payload_body", columnDefinition = "jsonb", nullable = false)
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String payloadBody;
 
     @Column(name = "status", nullable = false)
     private String status;
 
-    @Column(name = "event_id", nullable = false)
-    private String eventId;
-
-    @Column(name = "processed_at", nullable = false)
+    @Column(name = "processed_at")
     private LocalDateTime processedAt;
 
     public OfflineSyncQueue() {}
 
-    public OfflineSyncQueue(UUID idempotencyToken, String status, String eventId, LocalDateTime processedAt) {
-        this.idempotencyToken = idempotencyToken;
-        this.status = status;
+    public OfflineSyncQueue(String eventId, String idempotencyToken, String payloadBody, String status, LocalDateTime processedAt) {
         this.eventId = eventId;
-        this.processedAt = processedAt;
-    }
-
-    public Long getSyncId() {
-        return syncId;
-    }
-
-    public void setSyncId(Long syncId) {
-        this.syncId = syncId;
-    }
-
-    public UUID getIdempotencyToken() {
-        return idempotencyToken;
-    }
-
-    public void setIdempotencyToken(UUID idempotencyToken) {
         this.idempotencyToken = idempotencyToken;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
+        this.payloadBody = payloadBody;
         this.status = status;
+        this.processedAt = processedAt;
     }
 
     public String getEventId() {
@@ -64,6 +43,30 @@ public class OfflineSyncQueue {
 
     public void setEventId(String eventId) {
         this.eventId = eventId;
+    }
+
+    public String getIdempotencyToken() {
+        return idempotencyToken;
+    }
+
+    public void setIdempotencyToken(String idempotencyToken) {
+        this.idempotencyToken = idempotencyToken;
+    }
+
+    public String getPayloadBody() {
+        return payloadBody;
+    }
+
+    public void setPayloadBody(String payloadBody) {
+        this.payloadBody = payloadBody;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 
     public LocalDateTime getProcessedAt() {

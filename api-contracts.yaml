@@ -71,6 +71,9 @@ paths:
     get:
       summary: Fetch Active Third-Party Connection Infrastructure Lines
       operationId: getConnectionProviders
+      parameters:
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
       responses:
         '200':
           description: Connection providers compiled successfully
@@ -81,6 +84,9 @@ paths:
     post:
       summary: Onboard New Third-Party Connection Infrastructure Line
       operationId: createConnectionProvider
+      parameters:
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
       requestBody:
         required: true
         content:
@@ -108,6 +114,8 @@ paths:
           schema:
             type: string
           example: "AP Fiber"
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
       responses:
         '200':
           description: Subscribed plans array packet processed cleanly
@@ -154,6 +162,8 @@ paths:
           schema:
             type: string
           example: "Block A"
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
       responses:
         '200':
           description: Real-time dropdown suggestions array compiled
@@ -166,6 +176,9 @@ paths:
     post:
       summary: Log New Outbound Local Field Operation Expense
       operationId: logOperationalExpense
+      parameters:
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
       requestBody:
         required: true
         content:
@@ -195,6 +208,9 @@ paths:
     post:
       summary: Log Upstream Wholesale Third-Party Provider Payout Settlement
       operationId: logIspSettlement
+      parameters:
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
       requestBody:
         required: true
         content:
@@ -235,6 +251,8 @@ paths:
             type: string
             format: date
           example: "2026-06-07"
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
       responses:
         '200':
           description: Unified financial parameters loaded cleanly
@@ -249,6 +267,8 @@ paths:
       operationId: getSaasPricingMatrix
       parameters:
         - $ref: '#/components/parameters/XUserCountryCode'
+        - $ref: '#/components/parameters/XE2EID'
+        - $ref: '#/components/parameters/XSessionID'
       responses:
         '200':
           description: Multi-currency enterprise packaging schemas returned

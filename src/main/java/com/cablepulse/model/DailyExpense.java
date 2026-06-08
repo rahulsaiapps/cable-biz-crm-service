@@ -1,6 +1,8 @@
 package com.cablepulse.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.DecimalMax;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -11,8 +13,9 @@ public class DailyExpense {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @DecimalMax(value = "10000000.00", message = "Transaction amount exceeds maximum permissible business limit")
     @Column(nullable = false)
-    private Double amount;
+    private BigDecimal amount;
 
     @Column(nullable = false)
     private String description;
@@ -30,7 +33,7 @@ public class DailyExpense {
     public DailyExpense() {
     }
 
-    public DailyExpense(Long id, Double amount, String description, ExpenseCategory expenseCategory, LocalDateTime loggedAt, String loggedByEmployeeId) {
+    public DailyExpense(Long id, BigDecimal amount, String description, ExpenseCategory expenseCategory, LocalDateTime loggedAt, String loggedByEmployeeId) {
         this.id = id;
         this.amount = amount;
         this.description = description;
@@ -39,7 +42,7 @@ public class DailyExpense {
         this.loggedByEmployeeId = loggedByEmployeeId;
     }
 
-    public DailyExpense(Double amount, String description, String expenseCategory, String loggedByEmployeeId) {
+    public DailyExpense(BigDecimal amount, String description, String expenseCategory, String loggedByEmployeeId) {
         this.amount = amount;
         this.description = description;
         this.expenseCategory = expenseCategory != null ? ExpenseCategory.valueOf(expenseCategory) : null;
@@ -55,11 +58,11 @@ public class DailyExpense {
         this.id = id;
     }
 
-    public Double getAmount() {
+    public BigDecimal getAmount() {
         return amount;
     }
 
-    public void setAmount(Double amount) {
+    public void setAmount(BigDecimal amount) {
         this.amount = amount;
     }
 
