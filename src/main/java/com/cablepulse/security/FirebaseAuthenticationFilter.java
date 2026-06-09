@@ -15,12 +15,17 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final Logger logger = LoggerFactory.getLogger(FirebaseAuthenticationFilter.class);
 
     private final FirebaseAuth firebaseAuth;
     private final EmployeeRepository employeeRepository;
@@ -85,7 +90,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authentication);
 
             } catch (Exception e) {
-                // Clear the authentication context on validation failures
+                logger.error("CRITICAL: Firebase token verification failed! Reason: {}", e.getMessage(), e);
                 SecurityContextHolder.clearContext();
             }
         }
