@@ -164,7 +164,8 @@ public class DtoClasses {
         @JsonProperty("id") String planId,
         String name,
         BigDecimal price,
-        @JsonProperty("channels_text") String details
+        @JsonProperty("channels_text") String details,
+        String provider
     ) {}
 
     public record CreatePlanRequestDto(

@@ -36,3 +36,4 @@ buildNumber.properties
 firebase-service-account.json
 .env
 application-local.properties
+.local-data/

@@ -43,4 +43,18 @@ public class TerritoryService {
 
         return territoryRepository.save(territory);
     }
+
+    /**
+     * Marks a territory inactive without removing blocks or customer rows.
+     * Uses an explicit flag update instead of {@code repository.delete()} so
+     * Hibernate does not cascade hard-deletes to child blocks.
+     */
+    @Transactional
+    public void softDeleteTerritory(String territoryId) {
+        Territory territory = territoryRepository.findById(territoryId.trim())
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException(
+                        "Territory not found: " + territoryId));
+        territory.setDeleted(true);
+        territoryRepository.save(territory);
+    }
 }

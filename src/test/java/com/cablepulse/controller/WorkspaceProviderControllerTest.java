@@ -137,6 +137,31 @@ class WorkspaceProviderControllerTest {
     }
 
     @Test
+    void deleteTerritory_withBlocks_softDeletesWithoutError() throws Exception {
+        mockMvc.perform(post("/api/v1/workspace/providers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "location_name": "Kolamuru",
+                                  "blocks": ["Ramalayam Street", "School Road"]
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        String territoryId = territoryRepository.findAll().get(0).getTerritoryId();
+
+        mockMvc.perform(delete("/api/v1/workspace/territories/" + territoryId)
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCESS"));
+    }
+
+    @Test
     void getTerritoryBlocks_returnsSavedBlockNames() throws Exception {
         mockMvc.perform(post("/api/v1/workspace/providers")
                         .header("Authorization", "Bearer test-token")

@@ -1,16 +1,6 @@
-# Copy to application-local.properties for local Postgres bootstrap (gitignored).
-# spring.profiles.active=local
+# Copy to application-local.properties for custom local overrides (gitignored).
+# Or use the committed dev profile (recommended):
 #
-# Supabase pooler (port 6543): use prepareThreshold=0 on the JDBC URL — already set
-# in application.properties. For Flyway-only runs, direct port 5432 is also fine.
+#   mvn spring-boot:run -Dspring-boot.run.profiles=dev
 #
-# First-time local database without existing tables:
-#   spring.jpa.hibernate.ddl-auto=update
-#   spring.flyway.enabled=false
-#
-# After schema exists, switch to validate + Flyway to mirror production:
-#   spring.jpa.hibernate.ddl-auto=validate
-#   spring.flyway.enabled=true
-
-spring.jpa.hibernate.ddl-auto=update
-spring.flyway.enabled=false
+# spring.profiles.active=dev

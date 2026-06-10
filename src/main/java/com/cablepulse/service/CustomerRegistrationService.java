@@ -35,7 +35,8 @@ public class CustomerRegistrationService {
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Territory not found: " + request.getTerritoryId()));
 
-        int serialNumber = (int) customerRepository.countByTerritory_TerritoryId(territory.getTerritoryId()) + 1;
+        int serialNumber =
+                customerRepository.findMaxSerialNumberByTerritoryId(territory.getTerritoryId()) + 1;
         String customerId = "cust_" + UUID.randomUUID().toString().replace("-", "");
 
         GlobalPlan matchedPlan = null;

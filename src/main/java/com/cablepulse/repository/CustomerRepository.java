@@ -35,6 +35,12 @@ public interface CustomerRepository extends JpaRepository<Customer, String> {
 
     long countByTerritory_TerritoryId(String territoryId);
 
+    @Query("""
+            SELECT COALESCE(MAX(c.serialNumber), 0) FROM Customer c
+            WHERE c.territory.territoryId = :territoryId
+            """)
+    int findMaxSerialNumberByTerritoryId(@Param("territoryId") String territoryId);
+
     List<Customer> findByFullNameContainingIgnoreCase(String name);
 
     List<Customer> findByFullNameContainingIgnoreCaseAndBlockNameContainingIgnoreCase(String name, String block);

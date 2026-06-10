@@ -28,9 +28,11 @@ public class PlanController {
 
     @GetMapping
     public ResponseEntity<StandardResponse_PlansData> getPlansByProvider(
-            @RequestParam("providerName") String providerName) {
+            @RequestParam(value = "providerName", required = false) String providerName) {
 
-        List<GlobalPlan> plans = globalPlanRepository.findByProvider_Name(providerName);
+        List<GlobalPlan> plans = (providerName == null || providerName.isBlank())
+                ? globalPlanRepository.findAllWithProvider()
+                : globalPlanRepository.findByProvider_NameWithProvider(providerName.trim());
 
         List<PlanItemDTO> dtos = plans.stream()
                 .map(PlanController::toPlanItemDto)
@@ -87,11 +89,13 @@ public class PlanController {
 
     private static PlanItemDTO toPlanItemDto(GlobalPlan plan) {
         String details = plan.getChannelsText() != null ? plan.getChannelsText() : "";
+        String providerName = plan.getProvider() != null ? plan.getProvider().getName() : null;
         return new PlanItemDTO(
                 plan.getPlanId(),
                 plan.getPlanName(),
                 plan.getMonthlyRate(),
-                details
+                details,
+                providerName
         );
     }
 

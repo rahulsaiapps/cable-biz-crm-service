@@ -11,6 +11,7 @@ import com.cablepulse.repository.ConnectionProviderRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.TerritoryRepository;
 import com.cablepulse.service.CustomerBalanceService;
+import com.cablepulse.service.TerritoryService;
 import com.cablepulse.service.WorkspaceProviderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -35,18 +36,21 @@ public class WorkspaceController {
     private final ConnectionProviderRepository connectionProviderRepository;
     private final WorkspaceProviderService workspaceProviderService;
     private final CustomerBalanceService customerBalanceService;
+    private final TerritoryService territoryService;
 
     public WorkspaceController(
             CustomerRepository customerRepository,
             TerritoryRepository territoryRepository,
             ConnectionProviderRepository connectionProviderRepository,
             WorkspaceProviderService workspaceProviderService,
-            CustomerBalanceService customerBalanceService) {
+            CustomerBalanceService customerBalanceService,
+            TerritoryService territoryService) {
         this.customerRepository = customerRepository;
         this.territoryRepository = territoryRepository;
         this.connectionProviderRepository = connectionProviderRepository;
         this.workspaceProviderService = workspaceProviderService;
         this.customerBalanceService = customerBalanceService;
+        this.territoryService = territoryService;
     }
 
     @GetMapping("/territories")
@@ -158,8 +162,7 @@ public class WorkspaceController {
         Territory territory = territoryRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Territory not found: " + id));
 
-        // Triggers the @SQLDelete soft-delete UPDATE instead of a hard DELETE
-        territoryRepository.delete(territory);
+        territoryService.softDeleteTerritory(territory.getTerritoryId());
 
         StandardResponse_Void response = new StandardResponse_Void(
                 LocalDateTime.now(),
