@@ -7,8 +7,10 @@ import com.cablepulse.model.CustomerLedger;
 import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.service.CustomerRegistrationService;
+import com.cablepulse.service.CustomerService;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -27,14 +30,17 @@ public class CustomerController {
     private final CustomerRepository customerRepository;
     private final CustomerLedgerRepository customerLedgerRepository;
     private final CustomerRegistrationService customerRegistrationService;
+    private final CustomerService customerService;
 
     public CustomerController(
             CustomerRepository customerRepository,
             CustomerLedgerRepository customerLedgerRepository,
-            CustomerRegistrationService customerRegistrationService) {
+            CustomerRegistrationService customerRegistrationService,
+            CustomerService customerService) {
         this.customerRepository = customerRepository;
         this.customerLedgerRepository = customerLedgerRepository;
         this.customerRegistrationService = customerRegistrationService;
+        this.customerService = customerService;
     }
 
     @PostMapping
@@ -56,15 +62,86 @@ public class CustomerController {
     }
 
     @ExceptionHandler(EntityNotFoundException.class)
-    public ResponseEntity<StandardResponse_CreateCustomer> handleTerritoryNotFound(
-            EntityNotFoundException ex) {
-        StandardResponse_CreateCustomer response = new StandardResponse_CreateCustomer(
+    public ResponseEntity<Map<String, Object>> handleNotFound(EntityNotFoundException ex) {
+        return errorResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException ex) {
+        return errorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(java.util.NoSuchElementException.class)
+    public ResponseEntity<Map<String, Object>> handleNoSuchElement(java.util.NoSuchElementException ex) {
+        return errorResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    private static ResponseEntity<Map<String, Object>> errorResponse(HttpStatus status, String message) {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", "ERROR");
+        body.put("error", message);
+        body.put("data", null);
+        return ResponseEntity.status(status).body(body);
+    }
+
+    public record StandardResponse_Void(
+            LocalDateTime timestamp,
+            String status,
+            String error,
+            Void data
+    ) {}
+
+    @GetMapping("/{id}")
+    public ResponseEntity<StandardResponse_CustomerProfile> getCustomerProfile(
+            @PathVariable("id") String id,
+            @RequestHeader("X-E2E-ID") UUID e2eId,
+            @RequestHeader("X-Session-ID") UUID sessionId) {
+
+        CustomerProfileDTO profile = customerService.getCustomerProfile(id);
+        StandardResponse_CustomerProfile response = new StandardResponse_CustomerProfile(
                 LocalDateTime.now(),
-                "ERROR",
-                ex.getMessage(),
+                "SUCCESS",
+                null,
+                profile
+        );
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/payments")
+    public ResponseEntity<StandardResponse_Void> collectPayment(
+            @PathVariable("id") String id,
+            @Valid @RequestBody CollectPaymentRequestDto request,
+            @RequestHeader("X-E2E-ID") UUID e2eId,
+            @RequestHeader("X-Session-ID") UUID sessionId) {
+
+        String agentId = SecurityContextHolder.getContext().getAuthentication().getName();
+        customerService.collectPayment(id, request, agentId);
+
+        StandardResponse_Void response = new StandardResponse_Void(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
                 null
         );
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PutMapping("/{id}/subscription")
+    public ResponseEntity<StandardResponse_CustomerProfile> updateSubscription(
+            @PathVariable("id") String id,
+            @Valid @RequestBody UpdateSubscriptionRequestDto request,
+            @RequestHeader("X-E2E-ID") UUID e2eId,
+            @RequestHeader("X-Session-ID") UUID sessionId) {
+
+        CustomerProfileDTO profile = customerService.updateSubscription(id, request);
+        StandardResponse_CustomerProfile response = new StandardResponse_CustomerProfile(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                profile
+        );
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}/ledger")

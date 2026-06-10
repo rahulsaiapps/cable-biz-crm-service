@@ -35,3 +35,4 @@ buildNumber.properties
 # CRITICAL: Security & Cloud Infrastructure Secrets
 firebase-service-account.json
 .env
+application-local.properties

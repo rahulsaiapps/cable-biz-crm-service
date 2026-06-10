@@ -10,6 +10,7 @@ import com.cablepulse.model.Territory;
 import com.cablepulse.repository.ConnectionProviderRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.service.CustomerBalanceService;
 import com.cablepulse.service.WorkspaceProviderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,7 @@ import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -32,16 +34,19 @@ public class WorkspaceController {
     private final TerritoryRepository territoryRepository;
     private final ConnectionProviderRepository connectionProviderRepository;
     private final WorkspaceProviderService workspaceProviderService;
+    private final CustomerBalanceService customerBalanceService;
 
     public WorkspaceController(
             CustomerRepository customerRepository,
             TerritoryRepository territoryRepository,
             ConnectionProviderRepository connectionProviderRepository,
-            WorkspaceProviderService workspaceProviderService) {
+            WorkspaceProviderService workspaceProviderService,
+            CustomerBalanceService customerBalanceService) {
         this.customerRepository = customerRepository;
         this.territoryRepository = territoryRepository;
         this.connectionProviderRepository = connectionProviderRepository;
         this.workspaceProviderService = workspaceProviderService;
+        this.customerBalanceService = customerBalanceService;
     }
 
     @GetMapping("/territories")
@@ -105,23 +110,27 @@ public class WorkspaceController {
                 .map(t -> t.getLocationName())
                 .orElse("Default Location");
 
-        List<Customer> customers = customerRepository.findByTerritory_TerritoryId(locationId);
+        List<Customer> customers = customerRepository.findByTerritoryIdWithPlan(locationId);
+        List<String> customerIds = customers.stream().map(Customer::getCustomerId).toList();
+        Map<String, BigDecimal> balanceByCustomerId = customerBalanceService.sumDueAmountByCustomerIds(customerIds);
 
         List<WorkspaceCustomerDTO> dtos = customers.stream().map(c -> {
             String planName = c.getGlobalPlan() != null ? c.getGlobalPlan().getPlanName() : "No Plan";
             BigDecimal rate = c.getCustomRateOverride() != null ? c.getCustomRateOverride() :
                     (c.getGlobalPlan() != null ? c.getGlobalPlan().getMonthlyRate() : BigDecimal.ZERO);
+            BigDecimal balanceDue = balanceByCustomerId.getOrDefault(c.getCustomerId(), BigDecimal.ZERO);
+            String paymentStatus = CustomerBalanceService.paymentStatusFromBalance(balanceDue);
 
             return new WorkspaceCustomerDTO(
                     c.getCustomerId(),
                     c.getSerialNumber(),
                     c.getFullName(),
                     c.getDoorNumber(),
-                    c.getBlockName(), // Map blockName to streetName field in the DTO
+                    c.getBlockName(),
                     planName,
                     rate,
-                    "UNPAID", // Default status
-                    rate,     // Default balance due equal to rate
+                    paymentStatus,
+                    balanceDue,
                     c.getConnectionType(),
                     c.getBoxNumber(),
                     c.getCardNumber()

@@ -5,6 +5,7 @@ import com.cablepulse.infrastructure.WebHeaderInterceptor;
 import com.cablepulse.model.Customer;
 import com.cablepulse.model.GlobalPlan;
 import com.cablepulse.model.Territory;
+import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.TerritoryRepository;
 import com.cablepulse.service.DailyLedgerService;
@@ -50,6 +51,9 @@ public class TransactionControllerHappyPathTest {
     private CustomerRepository customerRepository;
 
     @MockBean
+    private CustomerLedgerRepository customerLedgerRepository;
+
+    @MockBean
     private TerritoryRepository territoryRepository;
 
     @MockBean
@@ -89,7 +93,8 @@ public class TransactionControllerHappyPathTest {
         );
 
         when(territoryRepository.findById("vil_kolamuru_001")).thenReturn(Optional.of(territory));
-        when(customerRepository.findByTerritory_TerritoryId("vil_kolamuru_001")).thenReturn(List.of(customer));
+        when(customerRepository.findByTerritoryIdWithPlan("vil_kolamuru_001")).thenReturn(List.of(customer));
+        when(customerLedgerRepository.sumDueAmountGroupedByCustomerId(any())).thenReturn(List.of());
 
         mockMvc.perform(get("/api/v1/workspace/customers")
                         .param("locationId", "vil_kolamuru_001")

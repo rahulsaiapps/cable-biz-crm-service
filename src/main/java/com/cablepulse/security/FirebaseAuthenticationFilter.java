@@ -1,6 +1,5 @@
 package com.cablepulse.security;
 
-import com.cablepulse.model.Employee;
 import com.cablepulse.service.EmployeeReconciliationService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
@@ -8,33 +7,29 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private static final Logger logger = LoggerFactory.getLogger(FirebaseAuthenticationFilter.class);
 
     private final FirebaseAuth firebaseAuth;
-    private final EmployeeReconciliationService employeeReconciliationService;
+    private final EmployeeRoleResolver employeeRoleResolver;
 
     public FirebaseAuthenticationFilter(
             FirebaseAuth firebaseAuth,
-            EmployeeReconciliationService employeeReconciliationService) {
+            EmployeeRoleResolver employeeRoleResolver) {
         this.firebaseAuth = firebaseAuth;
-        this.employeeReconciliationService = employeeReconciliationService;
+        this.employeeRoleResolver = employeeRoleResolver;
     }
 
     @Override
@@ -48,39 +43,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             try {
                 FirebaseToken decodedToken = firebaseAuth.verifyIdToken(idToken);
                 String uid = decodedToken.getUid();
-                Map<String, Object> claims = decodedToken.getClaims();
-
-                List<GrantedAuthority> authorities = new ArrayList<>();
-
-                // Map roles based on claims
-                if (claims.containsKey("role")) {
-                    String role = String.valueOf(claims.get("role")).toUpperCase();
-                    if (role.equals("OWNER") || role.equals("ROLE_OWNER")) {
-                        authorities.add(new SimpleGrantedAuthority("ROLE_OWNER"));
-                    } else if (role.equals("COLLECTION_BOY") || role.equals("ROLE_COLLECTION_BOY")) {
-                        authorities.add(new SimpleGrantedAuthority("ROLE_COLLECTION_BOY"));
-                    }
-                }
-
-                // Check boolean claim mappings
-                if (Boolean.TRUE.equals(claims.get("owner"))) {
-                    if (authorities.stream().noneMatch(a -> a.getAuthority().equals("ROLE_OWNER"))) {
-                        authorities.add(new SimpleGrantedAuthority("ROLE_OWNER"));
-                    }
-                }
-                if (Boolean.TRUE.equals(claims.get("collection_boy"))) {
-                    if (authorities.stream().noneMatch(a -> a.getAuthority().equals("ROLE_COLLECTION_BOY"))) {
-                        authorities.add(new SimpleGrantedAuthority("ROLE_COLLECTION_BOY"));
-                    }
-                }
-
-                // Fall back to the persisted Employee record's role when the token carries no role claims,
-                // mirroring AuthController's role resolution so hasRole(...) checks stay consistent with /auth/token-swap.
-                // DB reconciliation failures must not clear the whole security context — that turned
-                // transient JDBC/pool errors into 403s on otherwise valid Firebase sessions.
-                if (authorities.isEmpty()) {
-                    authorities.add(new SimpleGrantedAuthority("ROLE_" + resolveRoleName(decodedToken)));
-                }
+                List<GrantedAuthority> authorities = employeeRoleResolver.resolveAuthorities(decodedToken);
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         uid,
@@ -98,28 +61,5 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
-    }
-
-    private String resolveRoleName(FirebaseToken decodedToken) {
-        try {
-            Employee employee = employeeReconciliationService.resolveEmployee(decodedToken);
-            if (employee == null) {
-                return "OWNER";
-            }
-            try {
-                return employee.getRole().name();
-            } catch (Exception roleEx) {
-                logger.warn(
-                        "Invalid employee role for uid={}, defaulting to OWNER",
-                        decodedToken.getUid());
-                return "OWNER";
-            }
-        } catch (Exception ex) {
-            logger.warn(
-                    "Employee reconciliation failed for uid={}, defaulting to OWNER: {}",
-                    decodedToken.getUid(),
-                    ex.getMessage());
-            return "OWNER";
-        }
     }
 }

@@ -1,6 +1,8 @@
 package com.cablepulse.model;
 
 import jakarta.persistence.*;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "employees")
@@ -22,6 +24,11 @@ public class Employee {
 
     @Column(name = "description")
     private String description;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "employee_assigned_villages", joinColumns = @JoinColumn(name = "employee_id"))
+    @Column(name = "village_name")
+    private List<String> assignedVillages = new ArrayList<>();
 
     public Employee() {}
 
@@ -69,5 +76,13 @@ public class Employee {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public List<String> getAssignedVillages() {
+        return assignedVillages;
+    }
+
+    public void setAssignedVillages(List<String> assignedVillages) {
+        this.assignedVillages = assignedVillages != null ? new ArrayList<>(assignedVillages) : new ArrayList<>();
     }
 }

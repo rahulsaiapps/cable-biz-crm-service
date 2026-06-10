@@ -1,6 +1,7 @@
 package com.cablepulse.dto;
 
 import com.cablepulse.model.EmployeeRole;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -214,8 +215,8 @@ public class DtoClasses {
     ) {}
 
     public record UpgradeIntentRequestDto(
-        @NotBlank String tierName,
-        @NotBlank String billingCycle,
+        @NotBlank @JsonAlias("tier_name") String tierName,
+        @NotBlank @JsonAlias("billing_cycle") String billingCycle,
         @NotNull @Positive Double amount
     ) {}
 
@@ -229,15 +230,41 @@ public class DtoClasses {
     ) {}
 
     public record CreateEmployeeRequestDto(
-        @NotBlank String fullName,
+        @NotBlank @JsonProperty("full_name") String fullName,
         @NotNull EmployeeRole role,
-        String email
+        String email,
+        @JsonProperty("assigned_villages") List<String> assignedVillages
     ) {}
 
     public record EmployeeDTO(
-        String employeeId,
-        String fullName,
-        EmployeeRole role
+        @JsonProperty("employee_id") String employeeId,
+        @JsonProperty("full_name") String fullName,
+        EmployeeRole role,
+        String email,
+        @JsonProperty("assigned_villages") List<String> assignedVillages,
+        @JsonProperty("today_collection") long todayCollection,
+        @JsonProperty("phone_number") String phoneNumber
+    ) {
+        public static EmployeeDTO fromEntity(com.cablepulse.model.Employee employee) {
+            return new EmployeeDTO(
+                    employee.getEmployeeId(),
+                    employee.getFullName(),
+                    employee.getRole(),
+                    employee.getEmail(),
+                    employee.getAssignedVillages() != null
+                            ? List.copyOf(employee.getAssignedVillages())
+                            : List.of(),
+                    0L,
+                    null
+            );
+        }
+    }
+
+    public record StandardResponse_EmployeeList(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        List<EmployeeDTO> data
     ) {}
 
     public record UpdateProfileRequestDto(
@@ -306,5 +333,148 @@ public class DtoClasses {
         String status,
         String error,
         CreateCustomerResponse data
+    ) {}
+
+    public record CustomerProfileDTO(
+        String customerId,
+        String fullName,
+        String doorNumber,
+        String streetName,
+        @JsonProperty("territory_id") String territoryId,
+        @JsonProperty("territory_name") String territoryName,
+        String activePlanName,
+        BigDecimal monthlyRate,
+        String paymentStatus,
+        BigDecimal balanceDue,
+        @JsonProperty("phone_number") String phoneNumber
+    ) {}
+
+    public record StandardResponse_CustomerProfile(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        CustomerProfileDTO data
+    ) {}
+
+    public record CollectPaymentRequestDto(
+        @NotNull @Positive Integer amount,
+        @JsonAlias({"monthsPaid", "months_paid"}) List<String> monthsPaid,
+        Integer year,
+        @JsonProperty("payment_mode") String paymentMode,
+        @JsonProperty("transaction_ref") String transactionRef
+    ) {
+        public List<String> resolvedMonths() {
+            return monthsPaid != null ? monthsPaid : List.of();
+        }
+    }
+
+    public record UpdateSubscriptionRequestDto(
+        @JsonProperty("plan_name") String planName,
+        @JsonProperty("plan_monthly_rate") Integer planMonthlyRate
+    ) {
+        public String resolvedPlanName() {
+            return planName != null && !planName.isBlank() ? planName.trim() : "Custom Plan";
+        }
+
+        public int resolvedMonthlyRate() {
+            return planMonthlyRate != null ? planMonthlyRate : 0;
+        }
+    }
+
+    public record DailyLedgerTransactionDTO(
+        @JsonProperty("transactionId") String transactionId,
+        String customerName,
+        @JsonProperty("blockLocation") String blockLocation,
+        String timestamp,
+        BigDecimal amountCollected,
+        String paymentMode,
+        @JsonProperty("fieldAgentName") String fieldAgentName,
+        boolean isExpense,
+        String expenseCategory,
+        boolean isIspSettlement,
+        String paymentStatus
+    ) {}
+
+    public record DailyLedgerSummaryDTO(
+        BigDecimal collectedAmountToday,
+        int totalSettledHomesCount
+    ) {}
+
+    public record DailyLedgerBookData(
+        DailyLedgerSummaryDTO summary,
+        List<DailyLedgerTransactionDTO> transactions
+    ) {}
+
+    public record StandardResponse_DailyLedgerBook(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        DailyLedgerBookData data
+    ) {}
+
+    public record RecordDailyTransactionRequestDto(
+        @JsonProperty("customer_name") String customerName,
+        @JsonProperty("block_code") String blockCode,
+        @JsonProperty("amount_collected") Integer amountCollected,
+        @JsonProperty("payment_type") String paymentType,
+        @JsonProperty("collected_by") String collectedBy,
+        String date
+    ) {}
+
+    public record FinanceMetricsDTO(
+        @JsonProperty("net_profit") int netProfit,
+        @JsonProperty("trend_text") String trendText,
+        String description
+    ) {}
+
+    public record ExpenseDistributionItemDTO(
+        String label,
+        double percentage,
+        @JsonProperty("color_hex") int colorHex
+    ) {}
+
+    public record MonthlyPerformanceDTO(
+        String month,
+        int revenue,
+        int expenses
+    ) {}
+
+    public record DisbursementDTO(
+        String reference,
+        String vendor,
+        String status,
+        int amount
+    ) {}
+
+    public record FinanceHealthDTO(
+        @JsonProperty("active_subscriptions") int activeSubscriptions,
+        @JsonProperty("uptime_percentage") double uptimePercentage
+    ) {}
+
+    public record AlertTargetSizeDTO(
+        @JsonProperty("target_size") int targetSize
+    ) {}
+
+    public record BroadcastAcceptedData(
+        String trackingId
+    ) {}
+
+    public record StandardResponse_BroadcastAccepted(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        BroadcastAcceptedData data
+    ) {}
+
+    public record NotificationDispatchData(
+        @JsonProperty("notificationTrackingId") String notificationTrackingId,
+        @JsonProperty("estimatedCreditsUsed") int estimatedCreditsUsed
+    ) {}
+
+    public record StandardResponse_NotificationDispatch(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        NotificationDispatchData data
     ) {}
 }

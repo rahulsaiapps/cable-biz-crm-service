@@ -1,6 +1,7 @@
 package com.cablepulse.controller;
 
 import com.cablepulse.model.Employee;
+import com.cablepulse.security.EmployeeRoleResolver;
 import com.cablepulse.service.EmployeeReconciliationService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
@@ -17,12 +18,15 @@ public class AuthController {
 
     private final FirebaseAuth firebaseAuth;
     private final EmployeeReconciliationService employeeReconciliationService;
+    private final EmployeeRoleResolver employeeRoleResolver;
 
     public AuthController(
             FirebaseAuth firebaseAuth,
-            EmployeeReconciliationService employeeReconciliationService) {
+            EmployeeReconciliationService employeeReconciliationService,
+            EmployeeRoleResolver employeeRoleResolver) {
         this.firebaseAuth = firebaseAuth;
         this.employeeReconciliationService = employeeReconciliationService;
+        this.employeeRoleResolver = employeeRoleResolver;
     }
 
     @PostMapping("/token-swap")
@@ -34,7 +38,7 @@ public class AuthController {
             
             Employee employee = employeeReconciliationService.resolveEmployee(decodedToken);
             String fullName = employee != null ? employee.getFullName() : (name != null ? name : "Rahul Sai");
-            String role = employee != null ? "ROLE_" + employee.getRole().name() : "ROLE_OWNER";
+            String role = employeeRoleResolver.resolveRoleClaim(decodedToken);
 
             Map<String, Object> userProfile = new LinkedHashMap<>();
             userProfile.put("userId", uid);

@@ -1,11 +1,11 @@
 package com.cablepulse.service;
 
 import com.cablepulse.dto.DtoClasses.*;
-import com.cablepulse.model.DailyExpense;
-import com.cablepulse.model.DailyTransaction;
-import com.cablepulse.model.IspSettlement;
+import com.cablepulse.model.*;
+import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.DailyExpenseRepository;
 import com.cablepulse.repository.DailyTransactionRepository;
+import com.cablepulse.repository.EmployeeRepository;
 import com.cablepulse.repository.IspSettlementRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,7 +14,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class DailyLedgerServiceImpl implements DailyLedgerService {
@@ -22,14 +26,20 @@ public class DailyLedgerServiceImpl implements DailyLedgerService {
     private final DailyExpenseRepository dailyExpenseRepository;
     private final DailyTransactionRepository dailyTransactionRepository;
     private final IspSettlementRepository ispSettlementRepository;
+    private final CustomerRepository customerRepository;
+    private final EmployeeRepository employeeRepository;
 
     public DailyLedgerServiceImpl(
             DailyExpenseRepository dailyExpenseRepository,
             DailyTransactionRepository dailyTransactionRepository,
-            IspSettlementRepository ispSettlementRepository) {
+            IspSettlementRepository ispSettlementRepository,
+            CustomerRepository customerRepository,
+            EmployeeRepository employeeRepository) {
         this.dailyExpenseRepository = dailyExpenseRepository;
         this.dailyTransactionRepository = dailyTransactionRepository;
         this.ispSettlementRepository = ispSettlementRepository;
+        this.customerRepository = customerRepository;
+        this.employeeRepository = employeeRepository;
     }
 
     @Override
@@ -111,6 +121,142 @@ public class DailyLedgerServiceImpl implements DailyLedgerService {
                 null,
                 summary
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StandardResponse_DailyLedgerBook getDailyLedgerBook(LocalDate targetDate) {
+        if (targetDate == null) {
+            throw new IllegalArgumentException("targetDate is required");
+        }
+
+        LocalDateTime start = targetDate.atStartOfDay();
+        LocalDateTime end = targetDate.atTime(LocalTime.MAX);
+
+        List<DailyLedgerTransactionDTO> transactions = new ArrayList<>();
+
+        for (DailyTransaction tx : dailyTransactionRepository.findByRecordedAtBetween(start, end)) {
+            Customer customer = tx.getCustomer();
+            Employee agent = tx.getFieldAgent();
+            transactions.add(new DailyLedgerTransactionDTO(
+                    tx.getTransactionId(),
+                    customer != null ? customer.getFullName() : "Unknown",
+                    customer != null && customer.getBlockName() != null ? customer.getBlockName() : "",
+                    tx.getRecordedAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                    tx.getAmountCollected(),
+                    tx.getModeOfPayment() == PaymentMode.ONLINE_UPI ? "ONLINE_UPI" : "CASH",
+                    agent != null ? agent.getFullName() : "",
+                    false,
+                    null,
+                    false,
+                    null
+            ));
+        }
+
+        for (DailyExpense expense : dailyExpenseRepository.findByLoggedAtBetween(start, end)) {
+            transactions.add(new DailyLedgerTransactionDTO(
+                    "exp-" + expense.getId(),
+                    expense.getDescription(),
+                    expense.getExpenseCategory() != null ? expense.getExpenseCategory().name() : "EXPENSE",
+                    expense.getLoggedAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                    expense.getAmount(),
+                    "CASH",
+                    expense.getLoggedByEmployeeId() != null ? expense.getLoggedByEmployeeId() : "",
+                    true,
+                    expense.getExpenseCategory() != null ? expense.getExpenseCategory().name() : null,
+                    false,
+                    null
+            ));
+        }
+
+        for (IspSettlement settlement : ispSettlementRepository.findByTransactionDateBetween(start, end)) {
+            transactions.add(new DailyLedgerTransactionDTO(
+                    "settle-" + settlement.getId(),
+                    "Settlement to " + settlement.getConnectionTypeName(),
+                    settlement.getConnectionTypeName(),
+                    settlement.getTransactionDate().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                    settlement.getAmountPaid(),
+                    "CASH",
+                    "",
+                    false,
+                    null,
+                    true,
+                    settlement.getPaymentStatus()
+            ));
+        }
+
+        transactions.sort(Comparator.comparing(DailyLedgerTransactionDTO::timestamp).reversed());
+
+        int homesPaid = (int) dailyTransactionRepository.findByRecordedAtBetween(start, end).stream()
+                .map(tx -> tx.getCustomer() != null ? tx.getCustomer().getCustomerId() : null)
+                .distinct()
+                .count();
+
+        BigDecimal totalCollected = dailyTransactionRepository.findByRecordedAtBetween(start, end).stream()
+                .map(DailyTransaction::getAmountCollected)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        DailyLedgerBookData data = new DailyLedgerBookData(
+                new DailyLedgerSummaryDTO(totalCollected, homesPaid),
+                transactions
+        );
+
+        return new StandardResponse_DailyLedgerBook(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                data
+        );
+    }
+
+    @Override
+    @Transactional
+    public void recordManualCollection(RecordDailyTransactionRequestDto request, String agentEmployeeId) {
+        if (request.customerName() == null || request.customerName().isBlank()) {
+            throw new IllegalArgumentException("customer_name is required");
+        }
+        if (request.amountCollected() == null || request.amountCollected() <= 0) {
+            throw new IllegalArgumentException("amount_collected must be a positive number");
+        }
+
+        List<Customer> matches = customerRepository.findByFullNameContainingIgnoreCase(request.customerName().trim());
+        Customer customer = matches.isEmpty() ? null : matches.get(0);
+        if (customer == null) {
+            throw new IllegalArgumentException("Customer not found: " + request.customerName());
+        }
+
+        Employee fieldAgent = employeeRepository.findById(agentEmployeeId).orElse(null);
+        if (fieldAgent == null) {
+            List<Employee> employees = employeeRepository.findAll();
+            fieldAgent = employees.isEmpty()
+                    ? employeeRepository.save(new Employee("sys-agent", "System Agent", EmployeeRole.COLLECTION_BOY))
+                    : employees.get(0);
+        }
+
+        PaymentMode mode = PaymentMode.CASH;
+        if (request.paymentType() != null && request.paymentType().toUpperCase().contains("UPI")) {
+            mode = PaymentMode.ONLINE_UPI;
+        }
+
+        LocalDateTime recordedAt = LocalDateTime.now();
+        if (request.date() != null && !request.date().isBlank()) {
+            try {
+                LocalDate parsed = LocalDate.parse(request.date().trim());
+                recordedAt = parsed.atTime(LocalTime.now());
+            } catch (Exception ignored) {
+                // keep now
+            }
+        }
+
+        DailyTransaction transaction = new DailyTransaction(
+                UUID.randomUUID().toString(),
+                BigDecimal.valueOf(request.amountCollected()),
+                mode,
+                recordedAt,
+                customer,
+                fieldAgent
+        );
+        dailyTransactionRepository.save(transaction);
     }
 
     private static final BigDecimal MAX_TRANSACTION_AMOUNT = new BigDecimal("10000000.00");

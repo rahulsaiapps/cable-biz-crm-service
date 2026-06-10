@@ -2,11 +2,32 @@ package com.cablepulse.repository;
 
 import com.cablepulse.model.Customer;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
 import java.util.List;
 
 @Repository
 public interface CustomerRepository extends JpaRepository<Customer, String> {
+
+    @Query("""
+            SELECT c FROM Customer c
+            LEFT JOIN FETCH c.globalPlan
+            WHERE c.territory.territoryId = :territoryId
+            """)
+    List<Customer> findByTerritoryIdWithPlan(@Param("territoryId") String territoryId);
+
+    @Query("""
+            SELECT COUNT(DISTINCT c.customerId) FROM Customer c
+            WHERE (c.globalPlan IS NULL AND c.customRateOverride IS NULL)
+               OR EXISTS (
+                   SELECT 1 FROM CustomerLedger l
+                   WHERE l.customer.customerId = c.customerId
+                     AND l.dueAmount > 0
+               )
+            """)
+    long countPendingActivationOrOutstanding();
 
     List<Customer> findByTerritory_TerritoryId(String territoryId);
 

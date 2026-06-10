@@ -8,10 +8,13 @@ import com.cablepulse.service.EmployeeProfileService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/employees")
@@ -27,6 +30,22 @@ public class EmployeeController {
         this.employeeProfileService = employeeProfileService;
     }
 
+    @GetMapping
+    public ResponseEntity<StandardResponse_EmployeeList> listEmployees() {
+        List<EmployeeDTO> employees = employeeRepository.findAll().stream()
+                .map(EmployeeDTO::fromEntity)
+                .collect(Collectors.toList());
+
+        StandardResponse_EmployeeList response = new StandardResponse_EmployeeList(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                employees
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping
     public ResponseEntity<StandardResponse_EmployeeData> createEmployee(@Valid @RequestBody CreateEmployeeRequestDto requestDto) {
         String pendingEmployeeId = "PENDING-" + UUID.randomUUID();
@@ -35,13 +54,21 @@ public class EmployeeController {
         if (requestDto.email() != null && !requestDto.email().isBlank()) {
             employee.setEmail(requestDto.email().trim());
         }
+        if (requestDto.assignedVillages() != null && !requestDto.assignedVillages().isEmpty()) {
+            employee.setAssignedVillages(
+                    requestDto.assignedVillages().stream()
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .toList()
+            );
+        }
         Employee saved = employeeRepository.save(employee);
 
         StandardResponse_EmployeeData response = new StandardResponse_EmployeeData(
                 LocalDateTime.now(),
                 "SUCCESS",
                 null,
-                new EmployeeDTO(saved.getEmployeeId(), saved.getFullName(), saved.getRole())
+                EmployeeDTO.fromEntity(saved)
         );
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -59,6 +86,23 @@ public class EmployeeController {
                 toEmployeeProfileDto(saved)
         );
 
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/profile")
+    public ResponseEntity<StandardResponse_Void> deleteCurrentAccount() {
+        String employeeId = SecurityContextHolder.getContext().getAuthentication().getName();
+        Employee employee = employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new EmployeeNotFoundException("Employee not found for current session"));
+
+        employeeRepository.delete(employee);
+
+        StandardResponse_Void response = new StandardResponse_Void(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                null
+        );
         return ResponseEntity.ok(response);
     }
 

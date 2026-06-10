@@ -48,4 +48,11 @@ public class PlanService {
 
         return globalPlanRepository.save(plan);
     }
+
+    @Transactional
+    public void deletePlan(String planId) {
+        GlobalPlan plan = globalPlanRepository.findById(planId)
+                .orElseThrow(() -> new EntityNotFoundException("Plan not found: " + planId));
+        globalPlanRepository.delete(plan);
+    }
 }

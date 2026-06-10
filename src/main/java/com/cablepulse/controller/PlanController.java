@@ -61,6 +61,19 @@ public class PlanController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<StandardResponse_Void> deletePlan(@PathVariable("id") String id) {
+        planService.deletePlan(id);
+
+        StandardResponse_Void response = new StandardResponse_Void(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                null
+        );
+        return ResponseEntity.ok(response);
+    }
+
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<StandardResponse_Void> handleNotFound(EntityNotFoundException ex) {
         StandardResponse_Void response = new StandardResponse_Void(

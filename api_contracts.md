@@ -2,52 +2,154 @@
 
 **Base URL (Production):** `https://cable-biz-crm-service.onrender.com/api/v1`
 
+**Source of truth:** This document is generated from the Spring Boot controllers in `cable-crm-service` (`*Controller.java`). When code and docs disagree, trust the controllers.
+
+**Flutter client:** `cable-crm` (`lib/src/data/repositories/`). Each endpoint below notes where the mobile app calls it, when applicable.
+
+---
+
 ## Conventions
 
-- **Authentication:** All endpoints except `Auth` module endpoints require a valid Firebase ID token passed as a Bearer token: `Authorization: Bearer <FIREBASE_JWT_TOKEN>`. The token is verified by `FirebaseAuthenticationFilter`, which derives Spring Security roles (`ROLE_OWNER` / `ROLE_COLLECTION_BOY`) from the token's custom claims (`role`, `owner`, `collection_boy`), falling back to the persisted `Employee` record's role if no claim is present.
-- **Role-gated routes:** `/api/v1/plans/**` and `/api/v1/employees/**` require `ROLE_OWNER` (HTTP 403 otherwise). All other non-auth routes simply require *any* authenticated user (HTTP 401 if missing/invalid token).
-- **Tracing headers:** Several endpoints require `X-E2E-ID` and `X-Session-ID` request headers — both must be valid UUID strings (HTTP 400 `Bad Request` if missing or malformed).
-- **Standard envelope:** Most responses follow this shape:
+### Authentication
+
+All routes except **`/api/v1/auth/**`** require a Firebase ID token:
+
+```
+Authorization: Bearer <FIREBASE_ID_TOKEN>
+```
+
+`FirebaseAuthenticationFilter` verifies the token and assigns Spring Security roles:
+
+| Role | Meaning |
+|---|---|
+| `ROLE_OWNER` | Operator / admin — full workspace control |
+| `ROLE_COLLECTION_BOY` | Field staff — limited RBAC (e.g. no financial roll-ups) |
+
+Roles are resolved from Firebase custom claims (`role`, `owner`, `collection_boy`), then from the persisted `employees` row for the Firebase UID. If no employee row exists or reconciliation fails, the user receives **`ROLE_COLLECTION_BOY`** (least privilege — never `ROLE_OWNER`). On first sign-in, a `PENDING-*` placeholder row can be claimed by matching email during `POST /auth/token-swap`.
+
+**Note:** Spring Security may return **403 Forbidden** (sometimes with an empty body) when the token is missing, invalid, or lacks the required role — not always 401.
+
+### Role-gated routes
+
+| Pattern | Access |
+|---|---|
+| `/api/v1/auth/**` | Public (`permitAll`) |
+| `PATCH /api/v1/employees/profile` | Any authenticated user |
+| `DELETE /api/v1/employees/profile` | Any authenticated user |
+| `/api/v1/plans`, `/api/v1/plans/**` | `ROLE_OWNER` only |
+| `/api/v1/employees/**` (except profile PATCH/DELETE) | `ROLE_OWNER` only |
+| `DELETE /api/v1/workspace/territories/{id}` | `ROLE_OWNER` only (`@PreAuthorize`) |
+| All other authenticated routes | Any authenticated role |
+
+### Tracing headers
+
+`WebHeaderInterceptor` requires these on **every `/api/v1/**` route except `/api/v1/auth/**`**:
+
+| Header | Required | Format |
+|---|---|---|
+| `X-E2E-ID` | Yes | Valid UUID |
+| `X-Session-ID` | Yes | Valid UUID |
+
+Missing or blank `X-E2E-ID` → **400**. Malformed `X-Session-ID` → **401**.
+
+### Standard response envelope
+
+Most endpoints return:
+
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
+  "timestamp": "2026-06-10T10:15:30",
   "status": "SUCCESS",
   "error": null,
   "data": { }
 }
 ```
-On error, `status` becomes `"ERROR"`, `error` contains a message string, and `data` is `null`.
+
+On error: `status` is `"ERROR"`, `error` contains a message, `data` is usually `null`. Duplicate-resource handlers may return the existing entity in `data` with HTTP **409**.
+
+### JSON field naming
+
+Request/response bodies use **snake_case** where annotated with `@JsonProperty` (e.g. `full_name`, `location_name`, `channels_text`). Some DTOs also accept **camelCase aliases** (e.g. `monthsPaid`, `tier_name` / `tierName`). Send plaintext JSON — do not wrap bodies in encrypted envelopes.
+
+**Finance analytics routes** (`GET /finance/metrics`, `/expenses`, `/performance`, `/disbursements`, `/health`) and **`GET /alerts/target-size`** return **flat JSON** (no standard envelope) to match existing Flutter parsers.
 
 ---
 
-## 1. Auth Module (`/api/v1/auth`)
+## Quick reference
 
-Public endpoints — `permitAll()`. No Bearer token required (the `/token-swap` endpoint is how a client *obtains* the session token in the first place).
+| # | Method | Path | Auth | Flutter consumer |
+|---|---|---|---|---|
+| 1 | POST | `/auth/token-swap` | Public | `auth_repository.dart` |
+| 2 | GET | `/auth/health` | Public | `login_page.dart` |
+| 3 | GET | `/dashboard/metrics` | Bearer | `dashboard_repository.dart` |
+| 4 | POST | `/customers` | Bearer | `customers_repository.dart` |
+| 5 | GET | `/customers/{id}` | Bearer | `customer_ledger_repository.dart` |
+| 6 | GET | `/customers/{id}/ledger` | Bearer | `customer_ledger_repository.dart` |
+| 7 | POST | `/customers/{id}/payments` | Bearer | `customer_ledger_repository.dart` |
+| 8 | PUT | `/customers/{id}/subscription` | Bearer | `customer_ledger_repository.dart` |
+| 9 | GET | `/customers/search` | Bearer | `customers_repository.dart` *(unwired)* |
+| 10 | GET | `/workspace/territories` | Bearer | `dashboard_repository.dart`, `territory_repository.dart` |
+| 11 | GET | `/workspace/territories/active-locations` | Bearer | `territory_repository.dart`, `dashboard_repository.dart` |
+| 12 | GET | `/workspace/territories/{id}/blocks` | Bearer | `workspace_repository.dart` |
+| 13 | DELETE | `/workspace/territories/{id}` | Bearer + OWNER | `territory_repository.dart` |
+| 14 | GET | `/workspace/customers` | Bearer | `workspace_repository.dart` |
+| 15 | GET | `/workspace/providers` | Bearer | `plans_repository.dart`, `workspace_repository.dart` |
+| 16 | POST | `/workspace/providers` | Bearer | `territory_repository.dart`, `plans_repository.dart` |
+| 17 | GET | `/plans` | Bearer + OWNER | `plans_repository.dart` |
+| 18 | POST | `/plans` | Bearer + OWNER | `plans_repository.dart` |
+| 19 | DELETE | `/plans/{id}` | Bearer + OWNER | `plans_repository.dart` |
+| 20 | GET | `/employees` | Bearer + OWNER | `employee_repository.dart` |
+| 21 | POST | `/employees` | Bearer + OWNER | `employee_repository.dart` |
+| 22 | PATCH | `/employees/profile` | Bearer | `employee_repository.dart` (Settings) |
+| 23 | DELETE | `/employees/profile` | Bearer | `settings_view_model.dart` *(stub)* |
+| 24 | GET | `/saas/pricing` | Bearer | `saas_pricing_repository.dart` |
+| 25 | POST | `/saas/upgrade-intent` | Bearer | `saas_pricing_repository.dart` |
+| 26 | POST | `/sync/synchronize` | Bearer | `sync_manager.dart` *(unwired)* |
+| 27 | POST | `/transactions/expense` | Bearer | `finance_repository.dart` |
+| 28 | POST | `/transactions/isp-settlement` | Bearer | `finance_repository.dart` |
+| 29 | GET | `/transactions/daily-summary` | Bearer | `daily_ledger_repository.dart`, `finance_repository.dart` |
+| 30 | GET | `/finance/daily-ledger` | Bearer | `daily_ledger_repository.dart`, `finance_repository.dart` |
+| 31 | POST | `/finance/daily-ledger/transactions` | Bearer | `daily_ledger_repository.dart` |
+| 32 | GET | `/finance/metrics` | Bearer | `finance_repository.dart` |
+| 33 | GET | `/finance/expenses` | Bearer | `finance_repository.dart` |
+| 34 | GET | `/finance/performance` | Bearer | `finance_repository.dart` |
+| 35 | GET | `/finance/disbursements` | Bearer | `finance_repository.dart` |
+| 36 | GET | `/finance/health` | Bearer | `finance_repository.dart` |
+| 37 | POST | `/broadcasts/pending-reminder` | Bearer | `dashboard_repository.dart` |
+| 38 | POST | `/broadcasts/active-reminder` | Bearer | `dashboard_repository.dart` |
+| 39 | POST | `/bulletins/outage` | Bearer | `dashboard_repository.dart` *(dead)* |
+| 40 | POST | `/notifications/broadcast-outage` | Bearer | `alerts_repository.dart` |
+| 41 | POST | `/notifications/dispatched-alert` | Bearer | `alerts_repository.dart`, `customer_ledger_repository.dart` |
+| 42 | POST | `/notifications/dispatch-alert` | Bearer | `notification_service.dart` *(unwired)* |
+| 43 | GET | `/alerts/target-size` | Bearer | `alerts_repository.dart` |
+
+---
+
+## 1. Auth (`/api/v1/auth`)
+
+Public module — no Bearer token or trace headers required.
 
 ### 1.1 POST `/api/v1/auth/token-swap`
 
-**Description:** Exchanges a Firebase ID token (obtained client-side via Firebase Auth) for an internal session/access token and an enriched user profile (full name + role), resolved by looking up the `Employee` record matching the Firebase UID.
+**Purpose:** Exchange a client-side Firebase ID token for a session payload (access token + user profile). Called once after Google/Firebase sign-in.
 
-**Headers:**
-| Header | Required | Notes |
-|---|---|---|
-| `Content-Type` | Yes | `application/json` |
+**Flutter:** `auth_repository.dart` → `AuthProvider.signIn()`.
 
-**Request Body:**
+**Request body:**
 ```json
 {
-  "firebaseIdToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjA...<FIREBASE_ID_TOKEN>"
+  "firebaseIdToken": "eyJhbGciOiJSUzI1NiIs..."
 }
 ```
 
-**Success Response (200 OK):**
+**Success (200):**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
+  "timestamp": "2026-06-10T10:15:30",
   "status": "SUCCESS",
   "error": null,
   "data": {
-    "accessToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjA...<FIREBASE_ID_TOKEN>",
+    "accessToken": "<same Firebase JWT echoed back>",
     "accessTokenExpiresInSeconds": 3600,
     "refreshToken": "mock-refresh-token",
     "userProfile": {
@@ -59,87 +161,59 @@ Public endpoints — `permitAll()`. No Bearer token required (the `/token-swap` 
 }
 ```
 
-**Error Responses:**
-- `400 Bad Request` — Firebase token validation failed:
-```json
-{
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "ERROR",
-  "error": "Token validation failed: Firebase ID token has expired",
-  "data": null
-}
-```
+**Errors:** `400` — token verification failed.
 
-**curl:**
-```bash
-curl -X POST 'https://cable-biz-crm-service.onrender.com/api/v1/auth/token-swap' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN" \
-  -d '{
-    "firebaseIdToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjA...<FIREBASE_ID_TOKEN>"
-  }'
-```
+**Notes:** Resolves `Employee` by Firebase UID; if missing, attempts email-based reconciliation of `PENDING-*` rows created via `POST /employees`.
 
 ---
 
 ### 1.2 GET `/api/v1/auth/health`
 
-**Description:** Lightweight health/liveness probe for the platform — returns service status, current timestamp, and platform name. Used by uptime monitors / load balancers.
+**Purpose:** Lightweight liveness probe before login or for uptime monitors.
 
-**Headers:** None required.
+**Flutter:** `login_page.dart` warm-up ping.
 
-**Request Body:** None (GET request).
+**Request body:** None.
 
-**Success Response (200 OK):**
+**Success (200):**
 ```json
 {
   "status": "UP",
-  "timestamp": "2026-06-08T10:15:30.123",
+  "timestamp": "2026-06-10T10:15:30.123",
   "platform": "Cable Pulse Utility Backend"
 }
 ```
 
-**Error Responses:** None expected — endpoint is unauthenticated and side-effect free.
-
-**curl:**
-```bash
-curl -X GET 'https://cable-biz-crm-service.onrender.com/api/v1/auth/health' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN"
-```
+**Notes:** Does not use the standard `{ status, data, error }` envelope.
 
 ---
 
-## 2. Dashboard Metrics Module (`/api/v1/dashboard`)
+## 2. Dashboard (`/api/v1/dashboard`)
 
 ### 2.1 GET `/api/v1/dashboard/metrics`
 
-**Description:** Returns aggregate operational metrics for the home dashboard — total/pending customer counts, plus a financial summary (amount paid/pending for the current billing cycle). **RBAC privacy rule:** the `financialSummary` block is `null` for users holding `ROLE_COLLECTION_BOY` (collection staff cannot view financial roll-ups), and is populated for all other authenticated roles (e.g. `ROLE_OWNER`).
+**Purpose:** Home-screen aggregate metrics — customer counts and (for owners) a financial summary for the current billing cycle.
 
-**Headers:**
-| Header | Required | Notes |
-|---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` |
-| `X-E2E-ID` | Yes | UUID — end-to-end trace identifier |
-| `X-Session-ID` | Yes | UUID — client session identifier |
-| `Content-Type` | Yes | `application/json` |
+**Flutter:** `dashboard_repository.dart` → `DashboardViewModel` / `MetricsGrid`.
 
-**Request Body:** None (GET request).
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
 
-**Success Response (200 OK) — Owner/Admin role:**
+**Request body:** None.
+
+**Success (200):**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
+  "timestamp": "2026-06-10T10:15:30",
   "status": "SUCCESS",
   "error": null,
   "data": {
     "customerSummary": {
-      "totalCustomers": 248,
-      "pendingCustomers": 0
+      "totalCustomers": 482,
+      "pendingCustomers": 37
     },
     "financialSummary": {
-      "amountPaid": 15450.00,
-      "amountPending": 3200.00,
+      "amountPaid": 12850.00,
+      "amountPending": 4200.00,
       "currency": "INR",
       "billingCyclePeriod": "JUNE-2026"
     }
@@ -147,703 +221,1159 @@ curl -X GET 'https://cable-biz-crm-service.onrender.com/api/v1/auth/health' \
 }
 ```
 
-**Success Response (200 OK) — Collection Boy role (financials hidden):**
+**Computation (server-side aggregates — not hardcoded):**
+
+| Field | Source |
+|---|---|
+| `totalCustomers` | `COUNT(*)` on `customers` |
+| `pendingCustomers` | Distinct customers with incomplete activation (`plan_id` and `custom_rate_override` both null) **or** any ledger row with `due_amount > 0` |
+| `amountPaid` | `SUM(amount_collected)` from `daily_transactions` for the current calendar month |
+| `amountPending` | `SUM(due_amount)` from `customer_ledgers` for the current billing month/year where `due_amount > 0` |
+| `billingCyclePeriod` | `{MONTH}-{YEAR}` derived from server clock (e.g. `JUNE-2026`) |
+| `currency` | Always `INR` |
+
+**RBAC:** `financialSummary` is **`null`** for `ROLE_COLLECTION_BOY`.
+
+---
+
+## 3. Customers (`/api/v1/customers`)
+
+### 3.1 POST `/api/v1/customers`
+
+**Purpose:** Register a new subscriber/customer from the Add Customer form.
+
+**Flutter:** `customers_repository.dart` → `AddNewCustomerScreen`.
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`, `Content-Type: application/json`.
+
+**Request body:**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
+  "name": "Satish Kumar",
+  "territory_id": "ter_abc123",
+  "territory_name": "Kolamuru",
+  "phone_number": "9876543210",
+  "street": "Ramalayam Street",
+  "door_number": "12-34",
+  "plan_name": "Gold HD Pack",
+  "plan_monthly_rate": 350.00,
+  "box_number": "BX-001",
+  "card_number": "CR-9912",
+  "connection_type": "CABLE"
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `name` | Yes | Customer full name |
+| `territory_id` | Yes | Must reference an existing territory |
+| `territory_name` | No | Display hint; not authoritative |
+| `phone_number`, `street`, `door_number` | No | Address/contact |
+| `plan_name`, `plan_monthly_rate` | `plan_monthly_rate` required | Rate ≥ 0 |
+| `box_number`, `card_number`, `connection_type` | No | Hardware tracking |
+
+**Success (201):**
+```json
+{
+  "timestamp": "2026-06-10T10:15:30",
   "status": "SUCCESS",
   "error": null,
   "data": {
-    "customerSummary": {
-      "totalCustomers": 248,
-      "pendingCustomers": 0
-    },
-    "financialSummary": null
+    "newCustomerId": "cust_generated_uuid"
   }
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid/expired Bearer token
-- `400 Bad Request` — missing or malformed `X-E2E-ID` / `X-Session-ID` headers (must be valid UUIDs)
-
-**curl:**
-```bash
-curl -X GET 'https://cable-biz-crm-service.onrender.com/api/v1/dashboard/metrics' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN" \
-  -H 'X-E2E-ID: 11111111-1111-1111-1111-111111111111' \
-  -H 'X-Session-ID: 22222222-2222-2222-2222-222222222222'
-```
+**Errors:** `404` — territory not found. `400` — validation failure.
 
 ---
 
-## 3. Customers Module (`/api/v1/customers`)
+### 3.2 GET `/api/v1/customers/{id}`
 
-### 3.1 GET `/api/v1/customers/{id}/ledger`
+**Purpose:** Customer profile hero card for the Customer Ledger screen (name, plan, balance, contact).
 
-**Description:** Retrieves a customer's billing ledger history — a month-by-month breakdown of paid/due amounts and statuses, plus the running total balance due. Future months (relative to the system's billing cutoff of June 2026) are filtered out of the response.
+**Flutter:** `customer_ledger_repository.dart` → `fetchCustomerProfile()`.
 
-**Headers:**
-| Header | Required | Notes |
-|---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` |
-| `X-E2E-ID` | Yes | UUID — end-to-end trace identifier |
-| `X-Session-ID` | Yes | UUID — client session identifier |
-| `Content-Type` | Yes | `application/json` |
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
 
-**Path Parameters:**
-| Param | Type | Description |
-|---|---|---|
-| `id` | String | Customer ID (e.g. `CUST-00123`) |
+**Path param:** `id` — customer ID.
 
-**Request Body:** None (GET request).
-
-**Success Response (200 OK):**
+**Success (200):**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
+  "timestamp": "2026-06-10T10:15:30",
   "status": "SUCCESS",
   "error": null,
   "data": {
-    "customerId": "CUST-00123",
-    "fullName": "Venkata Ramana",
-    "totalBalanceDue": 600.00,
+    "customerId": "cust-001",
+    "fullName": "Satish Kumar",
+    "doorNumber": "12-34",
+    "streetName": "Ramalayam Street",
+    "territory_id": "ter_abc123",
+    "territory_name": "Kolamuru",
+    "activePlanName": "Gold HD Pack",
+    "monthlyRate": 350.00,
+    "paymentStatus": "UNPAID",
+    "balanceDue": 700.00,
+    "phone_number": "9876543210"
+  }
+}
+```
+
+**Errors:** `404` — customer not found.
+
+**Notes:** `paymentStatus` is `UNPAID` when the customer's total outstanding ledger `due_amount` sum is greater than zero; otherwise `PAID`. `balanceDue` is that aggregated ledger sum (not the monthly plan rate).
+
+**Flutter mapping:** `Customer.fromJson()` accepts `customerId`/`fullName`/`streetName`/`activePlanName`/`monthlyRate`/`paymentStatus`/`balanceDue`/`phone_number`.
+
+---
+
+### 3.3 GET `/api/v1/customers/{id}/ledger`
+
+**Purpose:** Monthly billing ledger for the Customer Ledger screen (payment history, balance due).
+
+**Flutter:** `customer_ledger_repository.dart` → `fetchPaymentLedger()`.
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Path param:** `id` — customer ID.
+
+**Query params:** `year` — optional; sent by Flutter but **ignored** by server (all ledger rows returned).
+
+**Success (200):**
+```json
+{
+  "data": {
+    "customerId": "cust-001",
+    "fullName": "Satish Kumar",
+    "totalBalanceDue": 700.00,
     "ledger": [
       {
-        "month": "MAY",
+        "month": "JUN",
         "year": 2026,
-        "status": "PAID",
-        "paidAmount": 300.00,
-        "dueAmount": 0.00
-      },
-      {
-        "month": "JUNE",
-        "year": 2026,
-        "status": "PARTIALLY_PAID",
-        "paidAmount": 150.00,
-        "dueAmount": 150.00
+        "status": "UNPAID",
+        "paidAmount": 0.00,
+        "dueAmount": 350.00
       }
     ]
   }
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid Bearer token
-- `400 Bad Request` — missing or malformed `X-E2E-ID` / `X-Session-ID` headers
-- Note: an unknown `{id}` does **not** 404 — it returns `200 OK` with `fullName: "Unknown"` and an empty/partial ledger, since the controller treats a missing customer as a soft-fallback rather than an error.
-
-**curl:**
-```bash
-curl -X GET 'https://cable-biz-crm-service.onrender.com/api/v1/customers/CUST-00123/ledger' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN" \
-  -H 'X-E2E-ID: 11111111-1111-1111-1111-111111111111' \
-  -H 'X-Session-ID: 22222222-2222-2222-2222-222222222222'
-```
+**Notes:** `month` may be 3-letter (`JUN`) or full (`JUNE`). Flutter `PaymentRecord._monthToInt` should handle both.
 
 ---
 
-### 3.2 GET `/api/v1/customers/search`
+### 3.4 POST `/api/v1/customers/{id}/payments`
 
-**Description:** Type-ahead/autocomplete search for customers by full name, with an optional secondary filter on block/area name. Returns a lightweight list of `{customerId, label}` suggestions (label combines serial number, name, and block).
+**Purpose:** Record a cash/UPI payment against one or more billing months.
 
-**Headers:**
-| Header | Required | Notes |
-|---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` |
-| `Content-Type` | Yes | `application/json` |
+**Flutter:** `customer_ledger_repository.dart` → `collectPayment()`.
 
-**Query Parameters:**
-| Param | Required | Description |
-|---|---|---|
-| `name` | Yes | Partial/full customer name (case-insensitive contains match) |
-| `block` | No | Partial/full block name to additionally filter by (case-insensitive contains match) |
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`, `Content-Type: application/json`.
 
-**Request Body:** None (GET request).
-
-**Success Response (200 OK):**
+**Request body:**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "SUCCESS",
-  "error": null,
-  "data": [
-    { "customerId": "CUST-00123", "label": "12. Venkata Ramana (Block-A)" },
-    { "customerId": "CUST-00456", "label": "47. Venkatesh Rao (Block-C)" }
-  ]
+  "amount": 500,
+  "monthsPaid": ["JAN", "FEB"],
+  "year": 2026,
+  "transaction_ref": "optional-upi-ref"
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid Bearer token
-- `400 Bad Request` — missing required `name` query parameter
+| Field | Required | Notes |
+|---|---|---|
+| `amount` | Yes | Positive integer (rupees) |
+| `monthsPaid` | Yes | 3-letter month abbreviations (`JAN`…`DEC`) or full names |
+| `year` | No | Defaults to current year |
+| `payment_mode` | No | `CASH` or `ONLINE_UPI` / `UPI` |
+| `transaction_ref` | No | UPI reference |
 
-**curl:**
-```bash
-curl -X GET 'https://cable-biz-crm-service.onrender.com/api/v1/customers/search?name=Venkat&block=Block-A' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN"
-```
+**Aliases:** `months_paid` accepted instead of `monthsPaid`.
+
+**Success (201):** Standard envelope, `data: null`.
+
+**Errors:** `404` — customer not found. `400` — validation failure.
+
+**Side effects:** Updates `customer_ledgers` rows and inserts a `daily_transactions` row attributed to the authenticated employee.
 
 ---
 
-## 4. Workspace Module (`/api/v1/workspace`)
+### 3.5 PUT `/api/v1/customers/{id}/subscription`
 
-### 4.1 GET `/api/v1/workspace/customers`
+**Purpose:** Change the customer's active plan and monthly rate.
 
-**Description:** Returns the roster of customers assigned to a given territory/location ("workspace view") for field collection — including plan, monthly rate (custom override or plan default), connection/box/card details, and a default `UNPAID` payment status for the current cycle.
+**Flutter:** `customer_ledger_repository.dart` → `updateSubscriptionPlan()`.
 
-**Headers:**
-| Header | Required | Notes |
-|---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` |
-| `X-E2E-ID` | Yes | UUID — end-to-end trace identifier |
-| `X-Session-ID` | Yes | UUID — client session identifier |
-| `Content-Type` | Yes | `application/json` |
-
-**Query Parameters:**
-| Param | Required | Description |
-|---|---|---|
-| `locationId` | Yes | Territory/location ID (e.g. `TERR-001`) |
-
-**Request Body:** None (GET request).
-
-**Success Response (200 OK):**
+**Request body:**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "SUCCESS",
-  "error": null,
-  "data": {
-    "locationId": "TERR-001",
-    "locationName": "Gandhi Nagar Block",
-    "customers": [
-      {
-        "customerId": "CUST-00123",
-        "serialNumber": 12,
-        "fullName": "Venkata Ramana",
-        "doorNumber": "12-3-45",
-        "streetName": "Block-A",
-        "activePlanName": "Gold HD Pack",
-        "monthlyRate": 350.00,
-        "paymentStatus": "UNPAID",
-        "balanceDue": 350.00,
-        "connectionType": "DTH",
-        "boxNumber": "BOX-9981",
-        "cardNumber": "CARD-2231"
-      }
-    ]
-  }
+  "plan_name": "Premium HD",
+  "plan_monthly_rate": 350
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid Bearer token
-- `400 Bad Request` — missing `locationId` query parameter, or missing/malformed `X-E2E-ID` / `X-Session-ID` headers
+**Success (200):** Returns updated profile in `data` (same shape as §3.2).
 
-**curl:**
-```bash
-curl -X GET 'https://cable-biz-crm-service.onrender.com/api/v1/workspace/customers?locationId=TERR-001' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN" \
-  -H 'X-E2E-ID: 11111111-1111-1111-1111-111111111111' \
-  -H 'X-Session-ID: 22222222-2222-2222-2222-222222222222'
-```
+**Notes:** If `plan_name` does not match an existing `global_plans` row, server creates an ad-hoc plan record.
 
 ---
 
-### 4.2 GET `/api/v1/workspace/providers`
+### 3.6 GET `/api/v1/customers/search`
 
-**Description:** Lists all registered connection/ISP providers (e.g. cable/DTH/internet vendors) configured for the operator.
+**Purpose:** Typeahead search when finding customers by name (optional block filter).
 
-**Headers:**
-| Header | Required | Notes |
+**Flutter:** `customers_repository.dart`.
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Query params:**
+
+| Param | Required | Description |
 |---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` |
-| `Content-Type` | Yes | `application/json` |
+| `name` | Yes | Substring match on full name |
+| `block` | No | Further filter by block/street |
 
-**Request Body:** None (GET request).
-
-**Success Response (200 OK):**
+**Success (200):**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "SUCCESS",
-  "error": null,
   "data": [
     {
-      "id": 1,
-      "name": "Skynet Cable Networks",
-      "registeredAt": "2025-01-15T09:30:00"
-    },
-    {
-      "id": 2,
-      "name": "Airtel Digital TV",
-      "registeredAt": "2025-03-22T14:05:00"
+      "customerId": "cust-001",
+      "label": "1. Satish Kumar (Ramalayam Street)"
     }
   ]
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid Bearer token
+---
 
-**curl:**
-```bash
-curl -X GET 'https://cable-biz-crm-service.onrender.com/api/v1/workspace/providers' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN"
+## 4. Workspace (`/api/v1/workspace`)
+
+Territory management, field-collection customer roster, and ISP provider categories share this module.
+
+### 4.1 GET `/api/v1/workspace/territories`
+
+**Purpose:** List all territories with customer counts for the home dashboard territory cards.
+
+**Flutter:** `dashboard_repository.dart`, `territory_repository.dart` (`fetchTerritories()`).
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Success (200):**
+```json
+{
+  "data": [
+    {
+      "territory_id": "ter_abc123",
+      "location_name": "Kolamuru",
+      "customer_count": 12,
+      "active_count": 12,
+      "pending_count": 0
+    }
+  ]
+}
 ```
 
 ---
 
-### 4.3 POST `/api/v1/workspace/providers`
+### 4.2 GET `/api/v1/workspace/territories/active-locations`
 
-**Description:** Registers a new connection/ISP provider for the operator's workspace. Provider name is required, must be non-blank, and must not exceed 50 characters (validated via `@Valid`).
+**Purpose:** Distinct active location **names** only — lightweight list for dropdowns (e.g. Add Team Member village picker).
 
-**Headers:**
-| Header | Required | Notes |
+**Flutter:** `territory_repository.dart` (`fetchActiveTerritoryNames()`), `dashboard_repository.dart` (fallback).
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Success (200):**
+```json
+{
+  "data": ["Kolamuru", "Diwancheruvu", "Hukumpeta"]
+}
+```
+
+---
+
+### 4.3 GET `/api/v1/workspace/territories/{id}/blocks`
+
+**Purpose:** Block/street names within a territory for the Add Customer block dropdown.
+
+**Flutter:** `workspace_repository.dart` (`fetchBlockNames()`).
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Path param:** `id` — territory ID.
+
+**Success (200):**
+```json
+{
+  "data": ["Ramalayam Street", "School Road", "Ganga Lane"]
+}
+```
+
+**Errors:** `404` — territory not found.
+
+---
+
+### 4.4 DELETE `/api/v1/workspace/territories/{id}`
+
+**Purpose:** Soft-delete a territory (sets `is_deleted = true`).
+
+**Flutter:** `territory_repository.dart` → `DeleteTerritoryDialog`.
+
+**Access:** `ROLE_OWNER` only.
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Success (200):** Standard envelope, `data: null`.
+
+**Errors:** `404` — territory not found.
+
+---
+
+### 4.5 GET `/api/v1/workspace/customers`
+
+**Purpose:** Field-collection workspace view — all customers in a territory with plan, rate, and ledger-derived payment status.
+
+**Flutter:** `workspace_repository.dart` → `WorkspaceScreen` / `WorkspaceViewModel`.
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Query params:**
+
+| Param | Required | Description |
 |---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` |
-| `Content-Type` | Yes | `application/json` |
+| `locationId` | Yes | Territory ID |
 
-**Request Body:**
+**Success (200):**
+```json
+{
+  "data": {
+    "locationId": "ter_abc123",
+    "locationName": "Kolamuru",
+    "customers": [
+      {
+        "customerId": "cust-001",
+        "serialNumber": 1,
+        "fullName": "Satish Kumar",
+        "doorNumber": "12-34",
+        "streetName": "Ramalayam Street",
+        "activePlanName": "Gold HD Pack",
+        "monthlyRate": 350.00,
+        "paymentStatus": "PAID",
+        "balanceDue": 0.00,
+        "connectionType": "CABLE",
+        "boxNumber": "BX-001",
+        "cardNumber": "CR-9912"
+      }
+    ]
+  }
+}
+```
+
+**Notes:** `paymentStatus` and `balanceDue` are computed per customer from aggregated `customer_ledgers.due_amount` (batch query — no per-row defaults). `UNPAID` when total due > 0; `PAID` when zero. Example above shows a fully paid customer; an overdue customer would show `"paymentStatus": "UNPAID"` and a positive `balanceDue`.
+
+---
+
+### 4.6 GET `/api/v1/workspace/providers`
+
+**Purpose:** List ISP / connection-provider **categories** used to group subscription plans (e.g. "Skynet Cable Networks").
+
+**Flutter:** `plans_repository.dart` (category chips), `workspace_repository.dart`, `dashboard_repository.dart` (legacy fallback).
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Success (200):**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Skynet Cable Networks",
+      "registeredAt": "2026-01-15T09:30:00"
+    }
+  ]
+}
+```
+
+**Notes:** This lists `connection_providers` rows — **not** territory locations. For territories use §4.1 or §4.2.
+
+---
+
+### 4.7 POST `/api/v1/workspace/providers`
+
+**Purpose:** Dual-purpose create endpoint — dispatches by body shape:
+
+| Body contains | Creates | Used for |
+|---|---|---|
+| `location_name` (+ optional `blocks`) | **Territory** | Onboarding a village/location |
+| `name` only (no `location_name`) | **ISP category** | Plan Management provider chips |
+
+**Flutter:**
+- Territory save → `territory_repository.dart` (`createTerritory()`)
+- ISP category → `plans_repository.dart` (`createCategory()`)
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`, `Content-Type: application/json`.
+
+#### Territory onboarding body
+```json
+{
+  "location_name": "Kolamuru",
+  "blocks": ["Ramalayam Street", "School Road"]
+}
+```
+
+| Field | Required | Max length |
+|---|---|---|
+| `location_name` | Yes (territory flow) | 100 |
+| `blocks` | No | Each entry ≤ 100 chars |
+
+**Success (201) — territory:**
+```json
+{
+  "data": {
+    "territory_id": "ter_abc123",
+    "location_name": "Kolamuru",
+    "customer_count": 0,
+    "active_count": 0,
+    "pending_count": 0
+  }
+}
+```
+
+**Conflict (409):** Duplicate `location_name` — `error`: `"Territory already exists"`, existing territory in `data`. Flutter should auto-select the existing location.
+
+#### ISP category body
 ```json
 {
   "name": "Skynet Cable Networks"
 }
 ```
 
-**Success Response (201 Created):**
+| Field | Required | Max length |
+|---|---|---|
+| `name` | Yes (category flow) | 50 |
+
+**Success (201) — provider:**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "SUCCESS",
-  "error": null,
   "data": {
     "id": 3,
     "name": "Skynet Cable Networks",
-    "registeredAt": "2026-06-08T10:15:30"
+    "registeredAt": "2026-06-10T10:15:30"
   }
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid Bearer token
-- `400 Bad Request` — validation failure, e.g. blank `name` or `name` exceeding 50 characters:
-```json
-{
-  "timestamp": "2026-06-08T10:15:30",
-  "status": 400,
-  "error": "Bad Request",
-  "errors": ["Provider name is required and cannot be blank"]
-}
-```
-- `409 Conflict` / `500 Internal Server Error` — duplicate provider name (unique constraint violation on `name`)
+**Conflict (409):** Duplicate `name` — `error`: `"Provider category already exists"`, existing provider in `data`.
 
-**curl:**
-```bash
-curl -X POST 'https://cable-biz-crm-service.onrender.com/api/v1/workspace/providers' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN" \
-  -d '{
-    "name": "Skynet Cable Networks"
-  }'
-```
+**Errors:** `400` — blank `name` (category flow) or validation failure.
 
 ---
 
-## 5. Plans Module (`/api/v1/plans`) — `ROLE_OWNER` only
+## 5. Plans (`/api/v1/plans`) — `ROLE_OWNER` only
 
 ### 5.1 GET `/api/v1/plans`
 
-**Description:** Lists all global subscription plans offered by a given provider (plan name, monthly rate, and feature highlights joined into a display string). **Restricted to users with `ROLE_OWNER`** — `ROLE_COLLECTION_BOY` users receive `403 Forbidden`.
+**Purpose:** List subscription plans for a given ISP provider category.
 
-**Headers:**
-| Header | Required | Notes |
-|---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` — must carry `ROLE_OWNER` |
-| `Content-Type` | Yes | `application/json` |
+**Flutter:** `plans_repository.dart` → `PlanManagementScreen` (requires `providerName` query param).
 
-**Query Parameters:**
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Query params:**
+
 | Param | Required | Description |
 |---|---|---|
-| `providerName` | Yes | Exact name of the connection provider (e.g. `Skynet Cable Networks`) |
+| `providerName` | Yes | Exact `connection_providers.name` match |
 
-**Request Body:** None (GET request).
-
-**Success Response (200 OK):**
+**Success (200):**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "SUCCESS",
-  "error": null,
   "data": [
     {
-      "planId": "PLAN-GOLD-HD",
+      "id": "plan-abc123",
       "name": "Gold HD Pack",
       "price": 350.00,
-      "details": "120+ Channels, HD Support, Free Installation"
-    },
-    {
-      "planId": "PLAN-SILVER-SD",
-      "name": "Silver SD Pack",
-      "price": 220.00,
-      "details": "80+ Channels, SD Support"
+      "channels_text": "120+ Channels, HD Support"
     }
   ]
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid Bearer token
-- `403 Forbidden` — authenticated but lacking `ROLE_OWNER` (e.g. `ROLE_COLLECTION_BOY`)
-- `400 Bad Request` — missing required `providerName` query parameter
+**Notes:** Response uses `id` and `channels_text` (not `planId` / `details`). Flutter `PricingPlan.fromJson` accepts both conventions.
 
-**curl:**
-```bash
-curl -X GET 'https://cable-biz-crm-service.onrender.com/api/v1/plans?providerName=Skynet%20Cable%20Networks' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN"
+---
+
+### 5.2 POST `/api/v1/plans`
+
+**Purpose:** Create a new global subscription plan under a provider category.
+
+**Flutter:** `plans_repository.dart` → `PlansViewModel.createPlan()`.
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`, `Content-Type: application/json`.
+
+**Request body:**
+```json
+{
+  "name": "Gold HD Pack",
+  "price": 350,
+  "channels_text": "120+ Channels, HD Support",
+  "is_hd": true,
+  "provider": "Skynet Cable Networks"
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `name` | Yes | Plan display name |
+| `price` | Yes | Positive integer monthly rate |
+| `provider` | Yes | Must match an existing provider `name` |
+| `channels_text` | No | Free-text channel/details description |
+| `is_hd` | No | Defaults `false` |
+
+**Success (201):**
+```json
+{
+  "data": {
+    "createdPlanId": "plan-uuid-abc"
+  }
+}
+```
+
+**Errors:** `404` — provider category not found.
+
+---
+
+### 5.3 DELETE `/api/v1/plans/{id}`
+
+**Purpose:** Remove a subscription plan from the catalog.
+
+**Flutter:** `plans_repository.dart` → `deletePlan()`.
+
+**Access:** `ROLE_OWNER` only.
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Path param:** `id` — plan ID (`global_plans.plan_id`).
+
+**Success (200):** Standard envelope, `data: null`.
+
+**Errors:** `404` — plan not found.
+
+---
+
+## 6. Employees (`/api/v1/employees`)
+
+Admin team management (`ROLE_OWNER`) plus self-service profile edit (any authenticated user).
+
+### 6.1 GET `/api/v1/employees`
+
+**Purpose:** Roster of all employees for the Team Management screen.
+
+**Flutter:** `employee_repository.dart` → `EmployeeViewModel.loadEmployees()`.
+
+**Access:** `ROLE_OWNER` only.
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Success (200):**
+```json
+{
+  "data": [
+    {
+      "employee_id": "emp-001",
+      "full_name": "Ramesh Kumar",
+      "role": "COLLECTION_BOY",
+      "email": "ramesh@example.com",
+      "assigned_villages": [],
+      "today_collection": 0,
+      "phone_number": null
+    }
+  ]
+}
+```
+
+**Notes:** `assigned_villages` is persisted (see §6.2). `today_collection` and `phone_number` remain placeholders (`0`/`null`).
+
+---
+
+### 6.2 POST `/api/v1/employees`
+
+**Purpose:** Pre-provision a team member before their first Firebase sign-in. Creates a `PENDING-*` `employee_id` linked on first `token-swap` via email.
+
+**Flutter:** `employee_repository.dart` → Add Team Member form.
+
+**Access:** `ROLE_OWNER` only.
+
+**Request body:**
+```json
+{
+  "full_name": "Ramesh Kumar",
+  "role": "COLLECTION_BOY",
+  "email": "ramesh@example.com",
+  "assigned_villages": ["Kolamuru", "Diwancheruvu"]
+}
+```
+
+| Field | Required | Values |
+|---|---|---|
+| `full_name` | Yes | Display name |
+| `role` | Yes | `OWNER` or `COLLECTION_BOY` |
+| `email` | No | Used for first-sign-in reconciliation |
+| `assigned_villages` | No | Territory location names to assign |
+
+**Success (201):**
+```json
+{
+  "data": {
+    "employee_id": "PENDING-uuid",
+    "full_name": "Ramesh Kumar",
+    "role": "COLLECTION_BOY",
+    "email": "ramesh@example.com",
+    "assigned_villages": [],
+    "today_collection": 0,
+    "phone_number": null
+  }
+}
 ```
 
 ---
 
-## 6. SaaS Pricing Module (`/api/v1/saas`)
+### 6.3 PATCH `/api/v1/employees/profile`
 
-### 6.1 GET `/api/v1/saas/pricing`
+**Purpose:** Signed-in user updates their own profile (name, email, description). Target resolved from Firebase UID on the token — no ID in the path.
 
-**Description:** Returns the platform's SaaS subscription pricing matrix (tier names, billing cycles, retail/discounted prices, currency) along with promotional-trial eligibility — the trial is active (3-month free period) while the total number of registered operator tenants remains under 100.
+**Flutter:** `employee_repository.dart` → `SettingsViewModel.saveProfile()`.
 
-**Headers:**
-| Header | Required | Notes |
-|---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` |
-| `X-User-Country-Code` | No | ISO country code (e.g. `IN`, `US`); defaults to `IN` if omitted — currently informational only and does not change pricing output |
-| `Content-Type` | Yes | `application/json` |
+**Access:** Any authenticated user (including `COLLECTION_BOY`).
 
-**Request Body:** None (GET request).
-
-**Success Response (200 OK):**
+**Request body** (send only changed fields):
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "SUCCESS",
-  "error": null,
+  "full_name": "Updated Name",
+  "email": "user@example.com",
+  "description": "Operator caption text"
+}
+```
+
+**Success (200):**
+```json
+{
+  "data": {
+    "employee_id": "firebase-uid-123",
+    "full_name": "Updated Name",
+    "email": "user@example.com",
+    "description": "Operator caption text",
+    "role": "OWNER"
+  }
+}
+```
+
+**Errors:** `404` — no employee row for Firebase UID. `400` — e.g. blank `full_name`.
+
+---
+
+### 6.4 DELETE `/api/v1/employees/profile`
+
+**Purpose:** Delete the signed-in user's employee record (account deletion from Settings).
+
+**Flutter:** `settings_view_model.dart` → `deleteAccount()` *(currently local stub)*.
+
+**Access:** Any authenticated user.
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Request body:** None.
+
+**Success (200):** Standard envelope, `data: null`.
+
+**Errors:** `404` — no employee row for Firebase UID.
+
+**Flutter action:** Call this endpoint, then `AuthProvider.signOut()`.
+
+---
+
+## 7. SaaS pricing (`/api/v1/saas`)
+
+### 7.1 GET `/api/v1/saas/pricing`
+
+**Purpose:** Platform subscription tier matrix for the in-app App Subscription Plans screen.
+
+**Flutter:** `saas_pricing_repository.dart` → `AppSubscriptionPlansPage`.
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Optional header:** `X-User-Country-Code` (default `IN`).
+
+**Success (200):**
+```json
+{
   "data": {
     "promotionalTrialActive": true,
-    "trialEndsAt": "2026-09-08T10:15:30",
+    "trialEndsAt": "2026-09-10T10:15:30",
     "currencyCode": "INR",
     "tiers": [
       {
-        "tierName": "Starter",
+        "tierName": "Pro",
         "billingCycle": "MONTHLY",
         "retailPrice": 999.0,
-        "discountedPrice": 699.0
-      },
-      {
-        "tierName": "Professional",
-        "billingCycle": "ANNUAL",
-        "retailPrice": 9999.0,
-        "discountedPrice": 6999.0
+        "discountedPrice": 799.0
       }
     ]
   }
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid Bearer token
+---
 
-**curl:**
-```bash
-curl -X GET 'https://cable-biz-crm-service.onrender.com/api/v1/saas/pricing' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN" \
-  -H 'X-User-Country-Code: IN'
+### 7.2 POST `/api/v1/saas/upgrade-intent`
+
+**Purpose:** Record that the operator initiated a paid SaaS upgrade (analytics / billing workflow).
+
+**Flutter:** `saas_pricing_repository.dart`.
+
+**Request body** (camelCase or snake_case):
+```json
+{
+  "tierName": "Pro",
+  "billingCycle": "MONTHLY",
+  "amount": 799.0
+}
+```
+
+**Snake_case alias (Flutter today):**
+```json
+{
+  "tier_name": "Pro",
+  "billing_cycle": "MONTHLY",
+  "amount": 799.0
+}
+```
+
+**Success (201):**
+```json
+{
+  "data": {
+    "id": 42
+  }
+}
 ```
 
 ---
 
-## 7. Transactions & Sync Module (`/api/v1`)
+## 8. Transactions & sync
 
-### 7.1 POST `/api/v1/sync/synchronize`
+### 8.1 POST `/api/v1/sync/synchronize`
 
-**Description:** Accepts a batch of offline-queued client events (e.g. payments recorded while offline) and reconciles them server-side, returning which event IDs were processed successfully versus rejected. Used by mobile/field clients to flush their local offline queue once connectivity is restored.
+**Purpose:** Flush the offline sync outbox — batch upload of queued field events after connectivity returns.
 
-**Headers:**
-| Header | Required | Notes |
-|---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` |
-| `X-E2E-ID` | Yes | UUID — end-to-end trace identifier |
-| `X-Session-ID` | Yes | UUID — client session identifier |
-| `Content-Type` | Yes | `application/json` |
+**Flutter:** `sync_manager.dart`.
 
-**Request Body:**
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`, `Content-Type: application/json`.
+
+**Request body:**
 ```json
 {
-  "syncBatchId": "33333333-3333-3333-3333-333333333333",
+  "syncBatchId": "550e8400-e29b-41d4-a716-446655440000",
   "events": [
     {
-      "eventId": "EVT-1001",
-      "actionType": "PAYMENT_RECORDED",
-      "idempotencyToken": "44444444-4444-4444-4444-444444444444",
-      "payload": {
-        "customerId": "CUST-00123",
-        "amount": 350.00,
-        "billingMonth": "JUNE",
-        "billingYear": 2026,
-        "collectedBy": "EMP-009"
-      }
+      "eventId": "evt-001",
+      "actionType": "RECORD_PAYMENT",
+      "idempotencyToken": "550e8400-e29b-41d4-a716-446655440001",
+      "payload": { }
     }
   ]
 }
 ```
 
-**Success Response (200 OK):**
+**Success (200):**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "SUCCESS",
-  "error": null,
   "data": {
     "syncResolution": {
-      "processedEventIds": ["EVT-1001"],
+      "processedEventIds": ["evt-001"],
       "rejectedEventIds": []
     }
   }
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid Bearer token
-- `400 Bad Request` — malformed payload, invalid `actionType`, or business-rule rejection raised as `IllegalArgumentException`:
+---
+
+### 8.2 POST `/api/v1/transactions/expense`
+
+**Purpose:** Log a daily business expense (Daily Book / Finance).
+
+**Flutter:** `finance_repository.dart`.
+
+**Request body** (entity fields):
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "ERROR",
-  "error": "Duplicate idempotency token detected for event EVT-1001",
-  "data": null
+  "amount": 500.00,
+  "description": "Cable wire maintenance",
+  "expenseCategory": "MAINTENANCE",
+  "loggedByEmployeeId": "firebase-uid-123"
 }
 ```
-- Missing/malformed `X-E2E-ID` / `X-Session-ID` headers also yield `400 Bad Request`
 
-**curl:**
-```bash
-curl -X POST 'https://cable-biz-crm-service.onrender.com/api/v1/sync/synchronize' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN" \
-  -H 'X-E2E-ID: 11111111-1111-1111-1111-111111111111' \
-  -H 'X-Session-ID: 22222222-2222-2222-2222-222222222222' \
-  -d '{
-    "syncBatchId": "33333333-3333-3333-3333-333333333333",
-    "events": [
+**Success (201):**
+```json
+{
+  "data": {
+    "expenseId": 17
+  }
+}
+```
+
+---
+
+### 8.3 POST `/api/v1/transactions/isp-settlement`
+
+**Purpose:** Log a vendor/ISP settlement payment.
+
+**Flutter:** `finance_repository.dart`.
+
+**Request body:**
+```json
+{
+  "connectionTypeName": "Fiber ISP",
+  "amountPaid": 24500.00,
+  "paymentStatus": "SETTLED",
+  "settlementNotes": "March dues"
+}
+```
+
+**Success (201):**
+```json
+{
+  "data": {
+    "settlementId": 8
+  }
+}
+```
+
+---
+
+### 8.4 GET `/api/v1/transactions/daily-summary`
+
+**Purpose:** Daily cash summary card — collections, expenses, settlements, net cash in hand.
+
+**Flutter:** `daily_ledger_repository.dart`, `finance_repository.dart`.
+
+**Query params:**
+
+| Param | Required | Format |
+|---|---|---|
+| `targetDate` | Yes | ISO date `YYYY-MM-DD` |
+
+**Success (200):**
+```json
+{
+  "data": {
+    "totalCollectedToday": 12500.00,
+    "totalExpensedToday": 800.00,
+    "totalIspSettlementsToday": 5000.00,
+    "netCashInHand": 6700.00
+  }
+}
+```
+
+---
+
+## 9. Finance analytics (`/api/v1/finance`)
+
+### 9.1 GET `/api/v1/finance/daily-ledger`
+
+**Purpose:** Daily Payment Ledger Book — summary banner + mixed transaction list (collections, expenses, ISP settlements).
+
+**Flutter:** `daily_ledger_repository.dart`, `finance_repository.dart`.
+
+**Headers:** `Authorization`, `X-E2E-ID`, `X-Session-ID`.
+
+**Query params:**
+
+| Param | Required | Format |
+|---|---|---|
+| `targetDate` | Yes | ISO date `YYYY-MM-DD` |
+
+**Success (200):**
+```json
+{
+  "data": {
+    "summary": {
+      "collectedAmountToday": 12450.00,
+      "totalSettledHomesCount": 32
+    },
+    "transactions": [
       {
-        "eventId": "EVT-1001",
-        "actionType": "PAYMENT_RECORDED",
-        "idempotencyToken": "44444444-4444-4444-4444-444444444444",
-        "payload": {
-          "customerId": "CUST-00123",
-          "amount": 350.00,
-          "billingMonth": "JUNE",
-          "billingYear": 2026,
-          "collectedBy": "EMP-009"
-        }
+        "transactionId": "trx-001",
+        "customerName": "S. Srinivasa Rao",
+        "blockLocation": "Ramalayam Street",
+        "timestamp": "2026-06-04T09:30:00",
+        "amountCollected": 350.00,
+        "paymentMode": "CASH",
+        "fieldAgentName": "Ramesh Kumar",
+        "isExpense": false,
+        "isIspSettlement": false
       }
     ]
-  }'
-```
-
----
-
-### 7.2 POST `/api/v1/transactions/expense`
-
-**Description:** Logs a daily operational expense (e.g. wages, fuel, repairs) against the operator's cash ledger. `expenseCategory` must be one of: `WIRE`, `FUEL`, `REPAIR`, `WAGES`, `MISC`. Amount is capped at `10,000,000.00`.
-
-**Headers:**
-| Header | Required | Notes |
-|---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` |
-| `Content-Type` | Yes | `application/json` |
-
-**Request Body:**
-```json
-{
-  "amount": 1500.00,
-  "description": "Cable wire purchase for Block-C re-wiring",
-  "expenseCategory": "WIRE",
-  "loggedByEmployeeId": "EMP-009"
-}
-```
-
-**Success Response (201 Created):**
-```json
-{
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "SUCCESS",
-  "error": null,
-  "data": {
-    "expenseId": 87
   }
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid Bearer token
-- `400 Bad Request` — invalid `expenseCategory` enum value, missing required fields, or amount exceeding the `10,000,000.00` business limit:
+---
+
+### 9.2 POST `/api/v1/finance/daily-ledger/transactions`
+
+**Purpose:** Record a manual field collection in the Daily Book.
+
+**Flutter:** `daily_ledger_repository.dart` → `recordTransaction()`.
+
+**Request body:**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "ERROR",
-  "error": "Transaction amount exceeds maximum permissible business limit",
-  "data": null
+  "customer_name": "S. Srinivasa Rao",
+  "block_code": "Ramalayam Street",
+  "amount_collected": 350,
+  "payment_type": "CASH",
+  "collected_by": "Ramesh Kumar",
+  "date": "2026-6-10"
 }
 ```
 
-**curl:**
-```bash
-curl -X POST 'https://cable-biz-crm-service.onrender.com/api/v1/transactions/expense' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN" \
-  -d '{
-    "amount": 1500.00,
-    "description": "Cable wire purchase for Block-C re-wiring",
-    "expenseCategory": "WIRE",
-    "loggedByEmployeeId": "EMP-009"
-  }'
+**Success (201):** Standard envelope, `data: null`.
+
+**Errors:** `400` — customer name not found in DB (must match an existing `customers.full_name`).
+
+---
+
+### 9.3 GET `/api/v1/finance/metrics`
+
+**Purpose:** Finance dashboard KPI card.
+
+**Flutter:** `finance_repository.dart` → `fetchFinanceMetrics()`.
+
+**Query params:** `interval` — `1M`, `3M`, `6M` (default), `1Y`.
+
+**Success (200)** — flat JSON (no envelope):
+```json
+{
+  "net_profit": 142300,
+  "trend_text": "+12% vs last quarter",
+  "description": "Consolidated operational hub revenue generation and vendor outlays."
+}
 ```
 
 ---
 
-### 7.3 POST `/api/v1/transactions/isp-settlement`
+### 9.4 GET `/api/v1/finance/expenses`
 
-**Description:** Logs a settlement payment made to an upstream ISP/connection vendor (e.g. monthly dues paid to the cable provider), recording amount, payment status, and optional notes.
+**Purpose:** Expense donut chart segments.
 
-**Headers:**
-| Header | Required | Notes |
-|---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` |
-| `Content-Type` | Yes | `application/json` |
+**Success (200)** — JSON array (no envelope):
+```json
+[
+  {
+    "label": "Cable Wire Maintenance",
+    "percentage": 60.0,
+    "color_hex": 1719603
+  }
+]
+```
 
-**Request Body:**
+---
+
+### 9.5 GET `/api/v1/finance/performance`
+
+**Purpose:** Monthly revenue vs expenses bar chart.
+
+**Success (200)** — JSON array:
+```json
+[
+  { "month": "JAN", "revenue": 120000, "expenses": 45000 }
+]
+```
+
+---
+
+### 9.6 GET `/api/v1/finance/disbursements`
+
+**Purpose:** Recent vendor disbursement list.
+
+**Success (200)** — JSON array:
+```json
+[
+  {
+    "reference": "DSP-8",
+    "vendor": "Fiber ISP",
+    "status": "FULL_PAYMENT",
+    "amount": 24500
+  }
+]
+```
+
+---
+
+### 9.7 GET `/api/v1/finance/health`
+
+**Purpose:** System health counters for Finance screen.
+
+**Success (200)** — flat JSON:
 ```json
 {
-  "connectionTypeName": "Skynet Cable Networks",
-  "amountPaid": 25000.00,
-  "paymentStatus": "PAID",
-  "settlementNotes": "Monthly vendor dues settled via bank transfer for May 2026"
+  "active_subscriptions": 482,
+  "uptime_percentage": 99.9
 }
 ```
 
-**Success Response (201 Created):**
+---
+
+## 10. Broadcasts & notifications
+
+All broadcast/notification POST routes return **202 ACCEPTED** with a tracking ID. They **log intent server-side** — no external WhatsApp provider is wired yet.
+
+### 10.1 POST `/api/v1/broadcasts/pending-reminder`
+
+**Flutter:** `dashboard_repository.dart` → `sendPendingReminder()`.
+
+**Request body:** None.
+
+**Success (202):**
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "SUCCESS",
-  "error": null,
+  "data": { "trackingId": "brd-pending-uuid" }
+}
+```
+
+---
+
+### 10.2 POST `/api/v1/broadcasts/active-reminder`
+
+**Flutter:** `dashboard_repository.dart` → `sendActiveReminder()`.
+
+Same shape as §10.1.
+
+---
+
+### 10.3 POST `/api/v1/bulletins/outage`
+
+**Flutter:** `dashboard_repository.dart` → `createOutageAlert()` *(dead code — not called)*.
+
+**Request body:**
+```json
+{
+  "title": "Power outage",
+  "body": "Services resume by 4 PM",
+  "territory_id": "ter_abc123"
+}
+```
+
+---
+
+### 10.4 POST `/api/v1/notifications/broadcast-outage`
+
+**Flutter:** `alerts_repository.dart` → `sendBroadcastOutage()`.
+
+**Request body:**
+```json
+{
+  "title": "Outage notice",
+  "body": "Scheduled maintenance",
+  "territory_id": "ter_abc123"
+}
+```
+
+---
+
+### 10.5 POST `/api/v1/notifications/dispatched-alert`
+
+**Flutter:** `alerts_repository.dart`, `customer_ledger_repository.dart` → WhatsApp settlement actions.
+
+**Request body:**
+```json
+{
+  "customerId": "cust-001",
+  "months": [1, 2, 3],
+  "message": "Your outstanding due is ₹750"
+}
+```
+
+---
+
+### 10.6 POST `/api/v1/notifications/dispatch-alert`
+
+**Flutter:** `notification_service.dart` *(unwired)*.
+
+**Success (202):**
+```json
+{
   "data": {
-    "settlementId": 34
+    "notificationTrackingId": "ntf-generic-uuid",
+    "estimatedCreditsUsed": 1
   }
 }
 ```
 
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid Bearer token
-- `400 Bad Request` — missing required fields or `amountPaid` exceeding the `10,000,000.00` business limit:
+---
+
+### 10.7 GET `/api/v1/alerts/target-size`
+
+**Flutter:** `alerts_repository.dart` → `fetchTargetAudienceSize()`.
+
+**Query params:** `region`, `block`, `customer_types` (comma-separated).
+
+**Success (200)** — flat JSON:
 ```json
 {
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "ERROR",
-  "error": "Transaction amount exceeds maximum permissible business limit",
-  "data": null
+  "target_size": 84
 }
-```
-
-**curl:**
-```bash
-curl -X POST 'https://cable-biz-crm-service.onrender.com/api/v1/transactions/isp-settlement' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN" \
-  -d '{
-    "connectionTypeName": "Skynet Cable Networks",
-    "amountPaid": 25000.00,
-    "paymentStatus": "PAID",
-    "settlementNotes": "Monthly vendor dues settled via bank transfer for May 2026"
-  }'
 ```
 
 ---
 
-### 7.4 GET `/api/v1/transactions/daily-summary`
+## Appendix A — Flutter implementation backlog
 
-**Description:** Returns a same-day cash-position summary for the operator — total amount collected from customers, total expenses logged, total ISP settlements paid, and the resulting net cash-in-hand for the specified date.
+Backend routes from the June 2026 audit are **implemented**. Remaining work is on the Flutter client (`cable-crm`). See **`FLUTTER_UI_PROMPT.md`** in this repo for the full task list to hand to the mobile team.
 
-**Headers:**
-| Header | Required | Notes |
+| Priority | Flutter task | Why |
 |---|---|---|
-| `Authorization` | Yes | `Bearer <FIREBASE_JWT_TOKEN>` |
-| `Content-Type` | Yes | `application/json` |
+| P0 | Surface errors on dashboard broadcast buttons | APIs exist; VM swallows failures |
+| P0 | Remove silent plan-update fallback on ledger | Show API errors now that `PUT /subscription` exists |
+| P0 | Surface collect-payment errors on ledger | `POST /payments` can fail |
+| P1 | Wire `recordNewExpense` / `recordNewIspSettlement` to `finance_repository` | Local-only inserts today |
+| P1 | Send `assigned_villages` on `POST /employees` | Backend now persists |
+| P1 | Wire `DELETE /employees/profile` in Settings | Replace simulated delay |
+| P1 | Instantiate `SyncManager` in `app.dart` DI | Offline sync unwired |
+| P1 | Fix `PaymentRecord` month parser for `JUNE` full names | Ledger display |
+| P2 | Wire `customers/search` or remove dead API | No screen caller |
+| P2 | Replace hardcoded alert regions with territory API | `alerts_view_model.dart` |
+| P2 | Add nav to `FinanceScreen` or remove dead import | Screen unreachable |
+| P2 | Territory 409 → auto-select existing (like plans) | UX parity |
+| P2 | Delete legacy `customer_repository.dart` | Wrong POST shape |
+| P3 | Optional: decouple `Future.wait` on ledger/daily ledger loads | Resilience if one call fails |
 
-**Query Parameters:**
-| Param | Required | Description |
-|---|---|---|
-| `targetDate` | Yes | ISO-8601 date (`yyyy-MM-dd`), e.g. `2026-06-08` |
-
-**Request Body:** None (GET request).
-
-**Success Response (200 OK):**
-```json
-{
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "SUCCESS",
-  "error": null,
-  "data": {
-    "totalCollectedToday": 18500.00,
-    "totalExpensedToday": 1500.00,
-    "totalIspSettlementsToday": 25000.00,
-    "netCashInHand": -8000.00
-  }
-}
-```
-
-**Error Responses:**
-- `401 Unauthorized` — missing/invalid Bearer token
-- `400 Bad Request` — missing `targetDate` parameter or invalid date format (must be `yyyy-MM-dd`):
-```json
-{
-  "timestamp": "2026-06-08T10:15:30",
-  "status": "ERROR",
-  "error": "Failed to convert value of type 'java.lang.String' to required type 'java.time.LocalDate'",
-  "data": null
-}
-```
-
-**curl:**
-```bash
-curl -X GET 'https://cable-biz-crm-service.onrender.com/api/v1/transactions/daily-summary?targetDate=2026-06-08' \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer YOUR_MOCK_OR_REAL_TOKEN"
-```
+**Mock note:** `USE_MOCK_ADAPTER=false` by default. Test against production after Render deploy.
 
 ---
 
-## Endpoint Summary Table
+## Appendix B — Controller map
 
-| Module | Method | Path | Auth | Role |
-|---|---|---|---|---|
-| Auth | POST | `/api/v1/auth/token-swap` | Public | — |
-| Auth | GET | `/api/v1/auth/health` | Public | — |
-| Dashboard | GET | `/api/v1/dashboard/metrics` | Bearer + trace headers | Any authenticated |
-| Customers | GET | `/api/v1/customers/{id}/ledger` | Bearer + trace headers | Any authenticated |
-| Customers | GET | `/api/v1/customers/search` | Bearer | Any authenticated |
-| Workspace | GET | `/api/v1/workspace/customers` | Bearer + trace headers | Any authenticated |
-| Workspace | GET | `/api/v1/workspace/providers` | Bearer | Any authenticated |
-| Workspace | POST | `/api/v1/workspace/providers` | Bearer | Any authenticated |
-| Plans | GET | `/api/v1/plans` | Bearer | `ROLE_OWNER` |
-| SaaS Pricing | GET | `/api/v1/saas/pricing` | Bearer | Any authenticated |
-| Transactions | POST | `/api/v1/sync/synchronize` | Bearer + trace headers | Any authenticated |
-| Transactions | POST | `/api/v1/transactions/expense` | Bearer | Any authenticated |
-| Transactions | POST | `/api/v1/transactions/isp-settlement` | Bearer | Any authenticated |
-| Transactions | GET | `/api/v1/transactions/daily-summary` | Bearer | Any authenticated |
+| Controller | Base path | Endpoints |
+|---|---|---|
+| `AuthController` | `/api/v1/auth` | `POST /token-swap` |
+| `HealthController` | `/api/v1/auth` | `GET /health` |
+| `DashboardController` | `/api/v1/dashboard` | `GET /metrics` (delegates to `DashboardService`) |
+| `CustomerController` | `/api/v1/customers` | `POST /`, `GET /{id}`, `GET /{id}/ledger`, `POST /{id}/payments`, `PUT /{id}/subscription`, `GET /search` |
+| `WorkspaceController` | `/api/v1/workspace` | Territory, customer, provider routes |
+| `PlanController` | `/api/v1/plans` | `GET /`, `POST /`, `DELETE /{id}` |
+| `EmployeeController` | `/api/v1/employees` | `GET /`, `POST /`, `PATCH /profile`, `DELETE /profile` |
+| `SaasPricingController` | `/api/v1/saas` | `GET /pricing`, `POST /upgrade-intent` |
+| `TransactionController` | (root) | `/api/v1/sync/synchronize`, `/api/v1/transactions/*` |
+| `FinanceController` | `/api/v1/finance` | `GET /daily-ledger`, `POST /daily-ledger/transactions`, `/metrics`, `/expenses`, `/performance`, `/disbursements`, `/health` |
+| `NotificationController` | (root) | `/api/v1/broadcasts/*`, `/api/v1/bulletins/*`, `/api/v1/notifications/*`, `/api/v1/alerts/target-size` |
+
+---
+
+*Last aligned with controllers: June 2026 (43 endpoints).*

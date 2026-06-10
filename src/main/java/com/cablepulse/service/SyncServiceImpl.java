@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -17,23 +16,20 @@ public class SyncServiceImpl implements SyncService {
 
     private final OfflineSyncQueueRepository offlineSyncQueueRepository;
     private final CustomerRepository customerRepository;
-    private final CustomerLedgerRepository customerLedgerRepository;
-    private final DailyTransactionRepository dailyTransactionRepository;
     private final EmployeeRepository employeeRepository;
+    private final PaymentProcessingService paymentProcessingService;
     private final ObjectMapper objectMapper;
 
     public SyncServiceImpl(
             OfflineSyncQueueRepository offlineSyncQueueRepository,
             CustomerRepository customerRepository,
-            CustomerLedgerRepository customerLedgerRepository,
-            DailyTransactionRepository dailyTransactionRepository,
             EmployeeRepository employeeRepository,
+            PaymentProcessingService paymentProcessingService,
             ObjectMapper objectMapper) {
         this.offlineSyncQueueRepository = offlineSyncQueueRepository;
         this.customerRepository = customerRepository;
-        this.customerLedgerRepository = customerLedgerRepository;
-        this.dailyTransactionRepository = dailyTransactionRepository;
         this.employeeRepository = employeeRepository;
+        this.paymentProcessingService = paymentProcessingService;
         this.objectMapper = objectMapper;
     }
 
@@ -87,97 +83,54 @@ public class SyncServiceImpl implements SyncService {
                     throw new IllegalArgumentException("customerId is required in payload");
                 }
 
-                Customer customer = customerRepository.findById(customerId)
+                customerRepository.findById(customerId)
                         .orElseThrow(() -> new NoSuchElementException("Customer not found: " + customerId));
 
-                // Extract months
-                Object monthsObj = payloadMap.get("months");
-                List<String> months = new ArrayList<>();
-                if (monthsObj instanceof List) {
-                    for (Object m : (List<?>) monthsObj) {
-                        months.add(String.valueOf(m).toUpperCase());
-                    }
-                } else if (monthsObj instanceof String) {
-                    months.add(String.valueOf(monthsObj).toUpperCase());
-                }
-
+                List<String> months = extractMonths(payloadMap);
                 if (months.isEmpty()) {
                     throw new IllegalArgumentException("At least one payment billing month is required");
                 }
 
-                // Extract amount
                 BigDecimal amountCollected = BigDecimal.ZERO;
                 Object amountObj = payloadMap.get("amount");
+                if (amountObj == null) {
+                    amountObj = payloadMap.get("grossAmountCollected");
+                }
                 if (amountObj != null) {
                     amountCollected = new BigDecimal(String.valueOf(amountObj));
                 }
 
-                // Extract payment mode
-                String paymentModeStr = (String) payloadMap.get("modeOfPayment");
                 PaymentMode paymentMode = PaymentMode.CASH;
+                String paymentModeStr = (String) payloadMap.get("modeOfPayment");
+                if (paymentModeStr == null) {
+                    paymentModeStr = (String) payloadMap.get("paymentMode");
+                }
                 if (paymentModeStr != null) {
                     try {
                         paymentMode = PaymentMode.valueOf(paymentModeStr.toUpperCase());
-                    } catch (IllegalArgumentException e) {
-                        // Keep default mode
+                    } catch (IllegalArgumentException ignored) {
+                        if ("UPI".equalsIgnoreCase(paymentModeStr)) {
+                            paymentMode = PaymentMode.ONLINE_UPI;
+                        }
                     }
                 }
 
-                // Extract or find field agent
-                String agentId = (String) payloadMap.get("fieldAgentId");
-                Employee fieldAgent = null;
-                if (agentId != null) {
-                    fieldAgent = employeeRepository.findById(agentId).orElse(null);
-                }
-                if (fieldAgent == null) {
-                    // Load the first available employee or create a default system agent
-                    List<Employee> employees = employeeRepository.findAll();
-                    if (!employees.isEmpty()) {
-                        fieldAgent = employees.get(0);
-                    } else {
-                        fieldAgent = new Employee("sys-agent", "System Sync Agent", EmployeeRole.COLLECTION_BOY);
-                        employeeRepository.save(fieldAgent);
-                    }
+                Employee fieldAgent = resolveFieldAgent((String) payloadMap.get("fieldAgentId"));
+
+                int year = java.time.LocalDate.now().getYear();
+                Object yearObj = payloadMap.get("year");
+                if (yearObj != null) {
+                    year = Integer.parseInt(String.valueOf(yearObj));
                 }
 
-                // Update ledger records
-                BigDecimal amountPerMonth = amountCollected.divide(BigDecimal.valueOf(months.size()), 2, RoundingMode.HALF_UP);
-                List<CustomerLedger> ledgers = customerLedgerRepository.findByCustomer_CustomerId(customerId);
-
-                for (String month : months) {
-                    Optional<CustomerLedger> existingLedger = ledgers.stream()
-                            .filter(l -> l.getBillingMonth().equalsIgnoreCase(month) && l.getBillingYear() == 2026)
-                            .findFirst();
-
-                    if (existingLedger.isPresent()) {
-                        CustomerLedger ledger = existingLedger.get();
-                        ledger.setStatus(LedgerStatus.PAID);
-                        ledger.setPaidAmount(ledger.getPaidAmount().add(amountPerMonth));
-                        ledger.setDueAmount(BigDecimal.ZERO);
-                        customerLedgerRepository.save(ledger);
-                    } else {
-                        CustomerLedger ledger = new CustomerLedger(
-                                month,
-                                2026,
-                                LedgerStatus.PAID,
-                                amountPerMonth,
-                                BigDecimal.ZERO,
-                                customer
-                        );
-                        customerLedgerRepository.save(ledger);
-                    }
-                }
-
-                // Log the daily transaction
-                DailyTransaction transaction = new DailyTransaction(
-                        UUID.randomUUID().toString(),
+                paymentProcessingService.recordPayment(
+                        customerId,
                         amountCollected,
+                        months,
+                        year,
                         paymentMode,
-                        LocalDateTime.now(),
-                        customer,
                         fieldAgent
                 );
-                dailyTransactionRepository.save(transaction);
 
                 // Save SUCCESS status tracker in Offline Sync Queue
                 OfflineSyncQueue queueEntry = existingQueue.orElse(new OfflineSyncQueue(event.eventId(), tokenValue, payloadBody, "SUCCESS", LocalDateTime.now()));
@@ -205,5 +158,36 @@ public class SyncServiceImpl implements SyncService {
                 null,
                 new SyncResolutionInner(resolution)
         );
+    }
+
+    private List<String> extractMonths(Map<String, Object> payloadMap) {
+        Object monthsObj = payloadMap.get("months");
+        if (monthsObj == null) {
+            monthsObj = payloadMap.get("monthsPaid");
+        }
+        List<String> months = new ArrayList<>();
+        if (monthsObj instanceof List) {
+            for (Object m : (List<?>) monthsObj) {
+                months.add(String.valueOf(m).toUpperCase());
+            }
+        } else if (monthsObj instanceof String) {
+            months.add(String.valueOf(monthsObj).toUpperCase());
+        }
+        return months;
+    }
+
+    private Employee resolveFieldAgent(String agentId) {
+        if (agentId != null) {
+            Employee found = employeeRepository.findById(agentId).orElse(null);
+            if (found != null) {
+                return found;
+            }
+        }
+        List<Employee> employees = employeeRepository.findAll();
+        if (!employees.isEmpty()) {
+            return employees.get(0);
+        }
+        Employee systemAgent = new Employee("sys-agent", "System Sync Agent", EmployeeRole.COLLECTION_BOY);
+        return employeeRepository.save(systemAgent);
     }
 }

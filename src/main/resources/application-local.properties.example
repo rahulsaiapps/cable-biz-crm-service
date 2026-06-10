@@ -1,0 +1,13 @@
+# Copy to application-local.properties for local Postgres bootstrap (gitignored).
+# spring.profiles.active=local
+#
+# First-time local database without existing tables:
+#   spring.jpa.hibernate.ddl-auto=update
+#   spring.flyway.enabled=false
+#
+# After schema exists, switch to validate + Flyway to mirror production:
+#   spring.jpa.hibernate.ddl-auto=validate
+#   spring.flyway.enabled=true
+
+spring.jpa.hibernate.ddl-auto=update
+spring.flyway.enabled=false

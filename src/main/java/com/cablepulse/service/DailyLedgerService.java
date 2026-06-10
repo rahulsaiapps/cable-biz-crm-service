@@ -1,8 +1,6 @@
 package com.cablepulse.service;
 
-import com.cablepulse.dto.DtoClasses.StandardResponse_DailyCashSummaryData;
-import com.cablepulse.dto.DtoClasses.StandardResponse_ExpenseCreated;
-import com.cablepulse.dto.DtoClasses.StandardResponse_SettlementCreated;
+import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.model.DailyExpense;
 import com.cablepulse.model.IspSettlement;
 
@@ -15,4 +13,8 @@ public interface DailyLedgerService {
     StandardResponse_SettlementCreated saveIspSettlement(IspSettlement settlement);
 
     StandardResponse_DailyCashSummaryData getDailySummary(LocalDate targetDate);
+
+    StandardResponse_DailyLedgerBook getDailyLedgerBook(LocalDate targetDate);
+
+    void recordManualCollection(RecordDailyTransactionRequestDto request, String agentEmployeeId);
 }
