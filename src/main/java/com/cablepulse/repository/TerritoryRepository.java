@@ -6,10 +6,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface TerritoryRepository extends JpaRepository<Territory, String> {
 
     @Query("SELECT DISTINCT t.locationName FROM Territory t WHERE t.deleted = false ORDER BY t.locationName")
     List<String> findDistinctActiveLocationNames();
+
+    Optional<Territory> findByLocationNameIgnoreCase(String locationName);
 }

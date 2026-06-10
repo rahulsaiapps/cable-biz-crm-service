@@ -274,4 +274,26 @@ public class DtoClasses {
         String error,
         List<String> data
     ) {}
+
+    public record TerritorySummaryDTO(
+        @JsonProperty("territory_id") String territoryId,
+        @JsonProperty("location_name") String locationName,
+        @JsonProperty("customer_count") long customerCount,
+        @JsonProperty("active_count") long activeCount,
+        @JsonProperty("pending_count") long pendingCount
+    ) {}
+
+    public record StandardResponse_Territories(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        List<TerritorySummaryDTO> data
+    ) {}
+
+    public record StandardResponse_Territory(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        TerritorySummaryDTO data
+    ) {}
 }

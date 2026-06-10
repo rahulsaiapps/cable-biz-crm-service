@@ -1,6 +1,7 @@
 package com.cablepulse.controller;
 
 import com.cablepulse.repository.ConnectionProviderRepository;
+import com.cablepulse.repository.TerritoryRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,9 @@ class WorkspaceProviderControllerTest {
     @Autowired
     private ConnectionProviderRepository connectionProviderRepository;
 
+    @Autowired
+    private TerritoryRepository territoryRepository;
+
     @MockBean
     private FirebaseAuth firebaseAuth;
 
@@ -43,6 +47,7 @@ class WorkspaceProviderControllerTest {
         e2eId = UUID.randomUUID().toString();
         sessionId = UUID.randomUUID().toString();
         connectionProviderRepository.deleteAll();
+        territoryRepository.deleteAll();
 
         FirebaseToken firebaseToken = mock(FirebaseToken.class);
         when(firebaseToken.getUid()).thenReturn("owner-uid");
@@ -63,6 +68,41 @@ class WorkspaceProviderControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.name").value("Skynet Cable Networks"));
+    }
+
+    @Test
+    void createTerritoryViaProviders_minimalBody_returnsCreated() throws Exception {
+        mockMvc.perform(post("/api/v1/workspace/providers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"location_name": "Kolamuru"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.location_name").value("Kolamuru"))
+                .andExpect(jsonPath("$.data.territory_id").exists());
+    }
+
+    @Test
+    void createTerritoryViaProviders_fullBody_returnsCreatedWithBlocks() throws Exception {
+        mockMvc.perform(post("/api/v1/workspace/providers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "location_name": "Kolamuru",
+                                  "blocks": ["Ramalayam Street", "School Road"]
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.location_name").value("Kolamuru"))
+                .andExpect(jsonPath("$.data.territory_id").exists());
     }
 
     @Test

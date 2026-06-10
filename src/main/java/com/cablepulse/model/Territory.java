@@ -19,6 +19,12 @@ public class Territory {
     @Column(name = "location_name", nullable = false)
     private String locationName;
 
+    @Column(name = "district")
+    private String district;
+
+    @Column(name = "state")
+    private String state;
+
     @Column(name = "is_deleted", nullable = false)
     private boolean deleted = false;
 
@@ -46,6 +52,22 @@ public class Territory {
 
     public void setLocationName(String locationName) {
         this.locationName = locationName;
+    }
+
+    public String getDistrict() {
+        return district;
+    }
+
+    public void setDistrict(String district) {
+        this.district = district;
+    }
+
+    public String getState() {
+        return state;
+    }
+
+    public void setState(String state) {
+        this.state = state;
     }
 
     public List<TerritoryBlock> getBlocks() {

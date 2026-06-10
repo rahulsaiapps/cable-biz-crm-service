@@ -2,13 +2,14 @@ package com.cablepulse.controller;
 
 import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.dto.ProviderRequestDto;
-import com.cablepulse.model.Customer;
+import com.cablepulse.exception.ProviderCategoryAlreadyExistsException;
+import com.cablepulse.exception.TerritoryAlreadyExistsException;
 import com.cablepulse.model.ConnectionProvider;
+import com.cablepulse.model.Customer;
 import com.cablepulse.model.Territory;
+import com.cablepulse.repository.ConnectionProviderRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.TerritoryRepository;
-import com.cablepulse.exception.ProviderCategoryAlreadyExistsException;
-import com.cablepulse.repository.ConnectionProviderRepository;
 import com.cablepulse.service.WorkspaceProviderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -40,6 +41,21 @@ public class WorkspaceController {
         this.territoryRepository = territoryRepository;
         this.connectionProviderRepository = connectionProviderRepository;
         this.workspaceProviderService = workspaceProviderService;
+    }
+
+    @GetMapping("/territories")
+    public ResponseEntity<StandardResponse_Territories> listTerritories() {
+        List<TerritorySummaryDTO> summaries = territoryRepository.findAll().stream()
+                .map(this::toTerritorySummary)
+                .collect(Collectors.toList());
+
+        StandardResponse_Territories response = new StandardResponse_Territories(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                summaries
+        );
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/territories/active-locations")
@@ -145,14 +161,25 @@ public class WorkspaceController {
     }
 
     @PostMapping("/providers")
-    public ResponseEntity<StandardResponse_Provider> createProvider(@Valid @RequestBody ProviderRequestDto requestDto) {
-        ConnectionProvider saved = workspaceProviderService.createProviderCategory(requestDto);
+    public ResponseEntity<?> createProvider(@Valid @RequestBody ProviderRequestDto requestDto) {
+        Object saved = workspaceProviderService.createWorkspaceProvider(requestDto);
 
+        if (saved instanceof Territory territory) {
+            StandardResponse_Territory response = new StandardResponse_Territory(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    toTerritorySummary(territory)
+            );
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        }
+
+        ConnectionProvider provider = (ConnectionProvider) saved;
         StandardResponse_Provider response = new StandardResponse_Provider(
                 LocalDateTime.now(),
                 "SUCCESS",
                 null,
-                saved
+                provider
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -167,6 +194,29 @@ public class WorkspaceController {
                 ex.getExisting()
         );
         return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
+    @ExceptionHandler(TerritoryAlreadyExistsException.class)
+    public ResponseEntity<StandardResponse_Territory> handleTerritoryAlreadyExists(
+            TerritoryAlreadyExistsException ex) {
+        StandardResponse_Territory response = new StandardResponse_Territory(
+                LocalDateTime.now(),
+                "ERROR",
+                ex.getMessage(),
+                toTerritorySummary(ex.getExisting())
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
+    private TerritorySummaryDTO toTerritorySummary(Territory territory) {
+        long customerCount = customerRepository.countByTerritory_TerritoryId(territory.getTerritoryId());
+        return new TerritorySummaryDTO(
+                territory.getTerritoryId(),
+                territory.getLocationName(),
+                customerCount,
+                customerCount,
+                0
+        );
     }
 
     public record StandardResponse_Providers(

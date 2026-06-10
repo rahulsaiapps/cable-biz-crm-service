@@ -12,6 +12,8 @@ public interface CustomerRepository extends JpaRepository<Customer, String> {
 
     List<Customer> findByTerritory_TerritoryIdAndBlockName(String territoryId, String blockName);
 
+    long countByTerritory_TerritoryId(String territoryId);
+
     List<Customer> findByFullNameContainingIgnoreCase(String name);
 
     List<Customer> findByFullNameContainingIgnoreCaseAndBlockNameContainingIgnoreCase(String name, String block);
