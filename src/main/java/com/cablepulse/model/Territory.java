@@ -1,11 +1,15 @@
 package com.cablepulse.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
 @Table(name = "territories")
+@SQLDelete(sql = "UPDATE territories SET is_deleted = true WHERE territory_id = ?")
+@SQLRestriction("is_deleted = false")
 public class Territory {
 
     @Id
@@ -14,6 +18,9 @@ public class Territory {
 
     @Column(name = "location_name", nullable = false)
     private String locationName;
+
+    @Column(name = "is_deleted", nullable = false)
+    private boolean deleted = false;
 
     @OneToMany(mappedBy = "territory", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<TerritoryBlock> blocks = new ArrayList<>();
@@ -47,5 +54,13 @@ public class Territory {
 
     public void setBlocks(List<TerritoryBlock> blocks) {
         this.blocks = blocks;
+    }
+
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 }

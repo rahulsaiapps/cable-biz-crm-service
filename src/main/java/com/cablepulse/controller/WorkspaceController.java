@@ -4,12 +4,14 @@ import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.dto.ProviderRequestDto;
 import com.cablepulse.model.Customer;
 import com.cablepulse.model.ConnectionProvider;
+import com.cablepulse.model.Territory;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.TerritoryRepository;
 import com.cablepulse.repository.ConnectionProviderRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 
 import java.math.BigDecimal;
@@ -78,6 +80,38 @@ public class WorkspaceController {
         return ResponseEntity.ok(response);
     }
 
+    @DeleteMapping("/territories/{id}")
+    public ResponseEntity<StandardResponse_Void> deleteTerritory(
+            @PathVariable("id") String id,
+            @RequestHeader("X-E2E-ID") UUID e2eId,
+            @RequestHeader("X-Session-ID") UUID sessionId) {
+
+        Territory territory = territoryRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Territory not found: " + id));
+
+        // Triggers the @SQLDelete soft-delete UPDATE instead of a hard DELETE
+        territoryRepository.delete(territory);
+
+        StandardResponse_Void response = new StandardResponse_Void(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                null
+        );
+        return ResponseEntity.ok(response);
+    }
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<StandardResponse_Void> handleNotFound(EntityNotFoundException ex) {
+        StandardResponse_Void response = new StandardResponse_Void(
+                LocalDateTime.now(),
+                "ERROR",
+                ex.getMessage(),
+                null
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+
     @GetMapping("/providers")
     public ResponseEntity<StandardResponse_Providers> getProviders() {
         List<ConnectionProvider> providers = connectionProviderRepository.findAll();
@@ -116,5 +150,12 @@ public class WorkspaceController {
         String status,
         String error,
         ConnectionProvider data
+    ) {}
+
+    public record StandardResponse_Void(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        Void data
     ) {}
 }
