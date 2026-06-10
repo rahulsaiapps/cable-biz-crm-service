@@ -1,7 +1,7 @@
 package com.cablepulse.security;
 
 import com.cablepulse.model.Employee;
-import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.service.EmployeeReconciliationService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import jakarta.servlet.FilterChain;
@@ -28,11 +28,13 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
     private static final Logger logger = LoggerFactory.getLogger(FirebaseAuthenticationFilter.class);
 
     private final FirebaseAuth firebaseAuth;
-    private final EmployeeRepository employeeRepository;
+    private final EmployeeReconciliationService employeeReconciliationService;
 
-    public FirebaseAuthenticationFilter(FirebaseAuth firebaseAuth, EmployeeRepository employeeRepository) {
+    public FirebaseAuthenticationFilter(
+            FirebaseAuth firebaseAuth,
+            EmployeeReconciliationService employeeReconciliationService) {
         this.firebaseAuth = firebaseAuth;
-        this.employeeRepository = employeeRepository;
+        this.employeeReconciliationService = employeeReconciliationService;
     }
 
     @Override
@@ -75,7 +77,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                 // Fall back to the persisted Employee record's role when the token carries no role claims,
                 // mirroring AuthController's role resolution so hasRole(...) checks stay consistent with /auth/token-swap
                 if (authorities.isEmpty()) {
-                    Employee employee = employeeRepository.findById(uid).orElse(null);
+                    Employee employee = employeeReconciliationService.resolveEmployee(decodedToken);
                     String roleName = employee != null ? employee.getRole().name() : "OWNER";
                     authorities.add(new SimpleGrantedAuthority("ROLE_" + roleName));
                 }

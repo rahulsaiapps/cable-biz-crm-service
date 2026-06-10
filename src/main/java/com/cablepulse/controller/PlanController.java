@@ -3,6 +3,10 @@ package com.cablepulse.controller;
 import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.model.GlobalPlan;
 import com.cablepulse.repository.GlobalPlanRepository;
+import com.cablepulse.service.PlanService;
+import jakarta.persistence.EntityNotFoundException;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,9 +19,11 @@ import java.util.stream.Collectors;
 public class PlanController {
 
     private final GlobalPlanRepository globalPlanRepository;
+    private final PlanService planService;
 
-    public PlanController(GlobalPlanRepository globalPlanRepository) {
+    public PlanController(GlobalPlanRepository globalPlanRepository, PlanService planService) {
         this.globalPlanRepository = globalPlanRepository;
+        this.planService = planService;
     }
 
     @GetMapping
@@ -27,12 +33,7 @@ public class PlanController {
         List<GlobalPlan> plans = globalPlanRepository.findByProvider_Name(providerName);
 
         List<PlanItemDTO> dtos = plans.stream()
-                .map(p -> new PlanItemDTO(
-                        p.getPlanId(),
-                        p.getPlanName(),
-                        p.getMonthlyRate(),
-                        p.getFeatures() != null ? String.join(", ", p.getFeatures()) : ""
-                ))
+                .map(PlanController::toPlanItemDto)
                 .collect(Collectors.toList());
 
         StandardResponse_PlansData response = new StandardResponse_PlansData(
@@ -44,4 +45,47 @@ public class PlanController {
 
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping
+    public ResponseEntity<StandardResponse_PlanCreated> createPlan(
+            @Valid @RequestBody CreatePlanRequestDto requestDto) {
+        GlobalPlan saved = planService.createPlan(requestDto);
+
+        StandardResponse_PlanCreated response = new StandardResponse_PlanCreated(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                new PlanCreatedData(saved.getPlanId())
+        );
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<StandardResponse_Void> handleNotFound(EntityNotFoundException ex) {
+        StandardResponse_Void response = new StandardResponse_Void(
+                LocalDateTime.now(),
+                "ERROR",
+                ex.getMessage(),
+                null
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+
+    private static PlanItemDTO toPlanItemDto(GlobalPlan plan) {
+        String details = plan.getChannelsText() != null ? plan.getChannelsText() : "";
+        return new PlanItemDTO(
+                plan.getPlanId(),
+                plan.getPlanName(),
+                plan.getMonthlyRate(),
+                details
+        );
+    }
+
+    public record StandardResponse_Void(
+            LocalDateTime timestamp,
+            String status,
+            String error,
+            Void data
+    ) {}
 }

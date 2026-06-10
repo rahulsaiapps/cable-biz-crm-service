@@ -1,7 +1,7 @@
 package com.cablepulse.controller;
 
 import com.cablepulse.model.Employee;
-import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.service.EmployeeReconciliationService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.springframework.http.ResponseEntity;
@@ -16,11 +16,13 @@ import java.util.Map;
 public class AuthController {
 
     private final FirebaseAuth firebaseAuth;
-    private final EmployeeRepository employeeRepository;
+    private final EmployeeReconciliationService employeeReconciliationService;
 
-    public AuthController(FirebaseAuth firebaseAuth, EmployeeRepository employeeRepository) {
+    public AuthController(
+            FirebaseAuth firebaseAuth,
+            EmployeeReconciliationService employeeReconciliationService) {
         this.firebaseAuth = firebaseAuth;
-        this.employeeRepository = employeeRepository;
+        this.employeeReconciliationService = employeeReconciliationService;
     }
 
     @PostMapping("/token-swap")
@@ -30,7 +32,7 @@ public class AuthController {
             String uid = decodedToken.getUid();
             String name = decodedToken.getName();
             
-            Employee employee = employeeRepository.findById(uid).orElse(null);
+            Employee employee = employeeReconciliationService.resolveEmployee(decodedToken);
             String fullName = employee != null ? employee.getFullName() : (name != null ? name : "Rahul Sai");
             String role = employee != null ? "ROLE_" + employee.getRole().name() : "ROLE_OWNER";
 

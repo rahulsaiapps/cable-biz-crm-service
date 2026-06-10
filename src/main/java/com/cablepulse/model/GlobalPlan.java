@@ -1,10 +1,7 @@
 package com.cablepulse.model;
 
 import jakarta.persistence.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import java.math.BigDecimal;
-import java.util.List;
 
 @Entity
 @Table(name = "global_plans")
@@ -20,9 +17,11 @@ public class GlobalPlan {
     @Column(name = "monthly_rate", nullable = false, precision = 10, scale = 2)
     private BigDecimal monthlyRate;
 
-    @Column(name = "features", columnDefinition = "text[]")
-    @JdbcTypeCode(SqlTypes.ARRAY)
-    private List<String> features;
+    @Column(name = "channels_text", columnDefinition = "text")
+    private String channelsText;
+
+    @Column(name = "is_hd")
+    private Boolean hd = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "provider_id")
@@ -30,11 +29,11 @@ public class GlobalPlan {
 
     public GlobalPlan() {}
 
-    public GlobalPlan(String planId, String planName, BigDecimal monthlyRate, List<String> features) {
+    public GlobalPlan(String planId, String planName, BigDecimal monthlyRate, String channelsText) {
         this.planId = planId;
         this.planName = planName;
         this.monthlyRate = monthlyRate;
-        this.features = features;
+        this.channelsText = channelsText;
     }
 
     public String getPlanId() {
@@ -61,19 +60,27 @@ public class GlobalPlan {
         this.monthlyRate = monthlyRate;
     }
 
-    public List<String> getFeatures() {
-        return features;
-    }
-
-    public void setFeatures(List<String> features) {
-        this.features = features;
-    }
-
     public ConnectionProvider getProvider() {
         return provider;
     }
 
     public void setProvider(ConnectionProvider provider) {
         this.provider = provider;
+    }
+
+    public String getChannelsText() {
+        return channelsText;
+    }
+
+    public void setChannelsText(String channelsText) {
+        this.channelsText = channelsText;
+    }
+
+    public Boolean getHd() {
+        return hd;
+    }
+
+    public void setHd(Boolean hd) {
+        this.hd = hd;
     }
 }

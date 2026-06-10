@@ -1,5 +1,10 @@
 package com.cablepulse.dto;
 
+import com.cablepulse.model.EmployeeRole;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -155,10 +160,29 @@ public class DtoClasses {
     ) {}
 
     public record PlanItemDTO(
-        String planId,
+        @JsonProperty("id") String planId,
         String name,
         BigDecimal price,
-        String details
+        @JsonProperty("channels_text") String details
+    ) {}
+
+    public record CreatePlanRequestDto(
+        @NotBlank String name,
+        @NotNull @Positive Integer price,
+        @JsonProperty("channels_text") String channelsText,
+        @JsonProperty("is_hd") Boolean isHd,
+        @NotBlank String provider
+    ) {}
+
+    public record PlanCreatedData(
+        @JsonProperty("createdPlanId") String createdPlanId
+    ) {}
+
+    public record StandardResponse_PlanCreated(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        PlanCreatedData data
     ) {}
 
     public record StandardResponse_PlansData(
@@ -187,5 +211,67 @@ public class DtoClasses {
         String status,
         String error,
         SaasPricingData data
+    ) {}
+
+    public record UpgradeIntentRequestDto(
+        @NotBlank String tierName,
+        @NotBlank String billingCycle,
+        @NotNull @Positive Double amount
+    ) {}
+
+    public record UpgradeIntentData(Long id) {}
+
+    public record StandardResponse_UpgradeIntentData(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        UpgradeIntentData data
+    ) {}
+
+    public record CreateEmployeeRequestDto(
+        @NotBlank String fullName,
+        @NotNull EmployeeRole role,
+        String email
+    ) {}
+
+    public record EmployeeDTO(
+        String employeeId,
+        String fullName,
+        EmployeeRole role
+    ) {}
+
+    public record UpdateProfileRequestDto(
+        @JsonProperty("full_name") String fullName,
+        String email,
+        String description
+    ) {}
+
+    public record EmployeeProfileDTO(
+        @JsonProperty("employee_id") String employeeId,
+        @JsonProperty("full_name") String fullName,
+        String email,
+        String description,
+        EmployeeRole role
+    ) {}
+
+    public record StandardResponse_EmployeeProfileData(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        EmployeeProfileDTO data
+    ) {}
+
+    public record StandardResponse_EmployeeData(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        EmployeeDTO data
+    ) {}
+
+    public record StandardResponse_LocationNames(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        List<String> data
     ) {}
 }

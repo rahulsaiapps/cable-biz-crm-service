@@ -72,7 +72,7 @@ public class TransactionControllerHappyPathTest {
     @Test
     void workspaceCustomerFlow_includesOptionalHardwareTrackingFields() throws Exception {
         Territory territory = new Territory("vil_kolamuru_001", "Kolamuru");
-        GlobalPlan plan = new GlobalPlan("plan-001", "Pro Pack", new BigDecimal("199.00"), List.of("HD"));
+        GlobalPlan plan = new GlobalPlan("plan-001", "Pro Pack", new BigDecimal("199.00"), "HD");
         Customer customer = new Customer(
                 "cust-001",
                 1,

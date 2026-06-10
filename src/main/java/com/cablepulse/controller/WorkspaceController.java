@@ -7,7 +7,9 @@ import com.cablepulse.model.ConnectionProvider;
 import com.cablepulse.model.Territory;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.exception.ProviderCategoryAlreadyExistsException;
 import com.cablepulse.repository.ConnectionProviderRepository;
+import com.cablepulse.service.WorkspaceProviderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,13 +29,31 @@ public class WorkspaceController {
     private final CustomerRepository customerRepository;
     private final TerritoryRepository territoryRepository;
     private final ConnectionProviderRepository connectionProviderRepository;
+    private final WorkspaceProviderService workspaceProviderService;
 
-    public WorkspaceController(CustomerRepository customerRepository, 
-                               TerritoryRepository territoryRepository,
-                               ConnectionProviderRepository connectionProviderRepository) {
+    public WorkspaceController(
+            CustomerRepository customerRepository,
+            TerritoryRepository territoryRepository,
+            ConnectionProviderRepository connectionProviderRepository,
+            WorkspaceProviderService workspaceProviderService) {
         this.customerRepository = customerRepository;
         this.territoryRepository = territoryRepository;
         this.connectionProviderRepository = connectionProviderRepository;
+        this.workspaceProviderService = workspaceProviderService;
+    }
+
+    @GetMapping("/territories/active-locations")
+    public ResponseEntity<StandardResponse_LocationNames> getActiveTerritoryLocationNames() {
+        List<String> locationNames = territoryRepository.findDistinctActiveLocationNames();
+
+        StandardResponse_LocationNames response = new StandardResponse_LocationNames(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                locationNames
+        );
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/customers")
@@ -126,8 +146,7 @@ public class WorkspaceController {
 
     @PostMapping("/providers")
     public ResponseEntity<StandardResponse_Provider> createProvider(@Valid @RequestBody ProviderRequestDto requestDto) {
-        ConnectionProvider provider = new ConnectionProvider(requestDto.getName());
-        ConnectionProvider saved = connectionProviderRepository.save(provider);
+        ConnectionProvider saved = workspaceProviderService.createProviderCategory(requestDto);
 
         StandardResponse_Provider response = new StandardResponse_Provider(
                 LocalDateTime.now(),
@@ -136,6 +155,18 @@ public class WorkspaceController {
                 saved
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @ExceptionHandler(ProviderCategoryAlreadyExistsException.class)
+    public ResponseEntity<StandardResponse_Provider> handleProviderCategoryAlreadyExists(
+            ProviderCategoryAlreadyExistsException ex) {
+        StandardResponse_Provider response = new StandardResponse_Provider(
+                LocalDateTime.now(),
+                "ERROR",
+                ex.getMessage(),
+                ex.getExisting()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
 
     public record StandardResponse_Providers(

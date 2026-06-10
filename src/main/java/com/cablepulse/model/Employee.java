@@ -17,6 +17,12 @@ public class Employee {
     @Column(name = "role", nullable = false)
     private EmployeeRole role;
 
+    @Column(name = "email")
+    private String email;
+
+    @Column(name = "description")
+    private String description;
+
     public Employee() {}
 
     public Employee(String employeeId, String fullName, EmployeeRole role) {
@@ -47,5 +53,21 @@ public class Employee {
 
     public void setRole(EmployeeRole role) {
         this.role = role;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 }
