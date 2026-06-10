@@ -1,10 +1,15 @@
 package com.cablepulse.controller;
 
+import com.cablepulse.dto.CreateCustomerRequestDto;
 import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.model.Customer;
 import com.cablepulse.model.CustomerLedger;
 import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
+import com.cablepulse.service.CustomerRegistrationService;
+import jakarta.persistence.EntityNotFoundException;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,10 +26,45 @@ public class CustomerController {
 
     private final CustomerRepository customerRepository;
     private final CustomerLedgerRepository customerLedgerRepository;
+    private final CustomerRegistrationService customerRegistrationService;
 
-    public CustomerController(CustomerRepository customerRepository, CustomerLedgerRepository customerLedgerRepository) {
+    public CustomerController(
+            CustomerRepository customerRepository,
+            CustomerLedgerRepository customerLedgerRepository,
+            CustomerRegistrationService customerRegistrationService) {
         this.customerRepository = customerRepository;
         this.customerLedgerRepository = customerLedgerRepository;
+        this.customerRegistrationService = customerRegistrationService;
+    }
+
+    @PostMapping
+    public ResponseEntity<StandardResponse_CreateCustomer> createCustomer(
+            @Valid @RequestBody CreateCustomerRequestDto request,
+            @RequestHeader("X-E2E-ID") UUID e2eId,
+            @RequestHeader("X-Session-ID") UUID sessionId) {
+
+        Customer saved = customerRegistrationService.registerCustomer(request);
+
+        StandardResponse_CreateCustomer response = new StandardResponse_CreateCustomer(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                new CreateCustomerResponse(saved.getCustomerId())
+        );
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<StandardResponse_CreateCustomer> handleTerritoryNotFound(
+            EntityNotFoundException ex) {
+        StandardResponse_CreateCustomer response = new StandardResponse_CreateCustomer(
+                LocalDateTime.now(),
+                "ERROR",
+                ex.getMessage(),
+                null
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
     @GetMapping("/{id}/ledger")

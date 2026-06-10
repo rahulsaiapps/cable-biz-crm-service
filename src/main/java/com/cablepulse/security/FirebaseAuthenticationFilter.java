@@ -75,11 +75,11 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                 }
 
                 // Fall back to the persisted Employee record's role when the token carries no role claims,
-                // mirroring AuthController's role resolution so hasRole(...) checks stay consistent with /auth/token-swap
+                // mirroring AuthController's role resolution so hasRole(...) checks stay consistent with /auth/token-swap.
+                // DB reconciliation failures must not clear the whole security context — that turned
+                // transient JDBC/pool errors into 403s on otherwise valid Firebase sessions.
                 if (authorities.isEmpty()) {
-                    Employee employee = employeeReconciliationService.resolveEmployee(decodedToken);
-                    String roleName = employee != null ? employee.getRole().name() : "OWNER";
-                    authorities.add(new SimpleGrantedAuthority("ROLE_" + roleName));
+                    authorities.add(new SimpleGrantedAuthority("ROLE_" + resolveRoleName(decodedToken)));
                 }
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
@@ -98,5 +98,28 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private String resolveRoleName(FirebaseToken decodedToken) {
+        try {
+            Employee employee = employeeReconciliationService.resolveEmployee(decodedToken);
+            if (employee == null) {
+                return "OWNER";
+            }
+            try {
+                return employee.getRole().name();
+            } catch (Exception roleEx) {
+                logger.warn(
+                        "Invalid employee role for uid={}, defaulting to OWNER",
+                        decodedToken.getUid());
+                return "OWNER";
+            }
+        } catch (Exception ex) {
+            logger.warn(
+                    "Employee reconciliation failed for uid={}, defaulting to OWNER: {}",
+                    decodedToken.getUid(),
+                    ex.getMessage());
+            return "OWNER";
+        }
     }
 }

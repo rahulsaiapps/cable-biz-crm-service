@@ -296,4 +296,15 @@ public class DtoClasses {
         String error,
         TerritorySummaryDTO data
     ) {}
+
+    public record CreateCustomerResponse(
+        @JsonProperty("newCustomerId") String newCustomerId
+    ) {}
+
+    public record StandardResponse_CreateCustomer(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        CreateCustomerResponse data
+    ) {}
 }

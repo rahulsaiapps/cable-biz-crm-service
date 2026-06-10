@@ -19,6 +19,8 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -103,6 +105,62 @@ class WorkspaceProviderControllerTest {
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.location_name").value("Kolamuru"))
                 .andExpect(jsonPath("$.data.territory_id").exists());
+    }
+
+    @Test
+    void deleteTerritory_softDeletesActiveTerritory() throws Exception {
+        mockMvc.perform(post("/api/v1/workspace/providers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"location_name": "Kolamuru"}
+                                """))
+                .andExpect(status().isCreated());
+
+        String territoryId = territoryRepository.findAll().get(0).getTerritoryId();
+
+        mockMvc.perform(delete("/api/v1/workspace/territories/" + territoryId)
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCESS"));
+
+        mockMvc.perform(get("/api/v1/workspace/territories")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    void getTerritoryBlocks_returnsSavedBlockNames() throws Exception {
+        mockMvc.perform(post("/api/v1/workspace/providers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "location_name": "Kolamuru",
+                                  "blocks": ["Ramalayam Street", "School Road"]
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        String territoryId = territoryRepository.findAll().get(0).getTerritoryId();
+
+        mockMvc.perform(get("/api/v1/workspace/territories/" + territoryId + "/blocks")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data[0]").value("Ramalayam Street"))
+                .andExpect(jsonPath("$.data[1]").value("School Road"));
     }
 
     @Test

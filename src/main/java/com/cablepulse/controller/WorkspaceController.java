@@ -13,6 +13,7 @@ import com.cablepulse.repository.TerritoryRepository;
 import com.cablepulse.service.WorkspaceProviderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
@@ -54,6 +55,28 @@ public class WorkspaceController {
                 "SUCCESS",
                 null,
                 summaries
+        );
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/territories/{id}/blocks")
+    public ResponseEntity<StandardResponse_BlockNames> getTerritoryBlocks(
+            @PathVariable("id") String id,
+            @RequestHeader("X-E2E-ID") UUID e2eId,
+            @RequestHeader("X-Session-ID") UUID sessionId) {
+
+        Territory territory = territoryRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Territory not found: " + id));
+
+        List<String> blockNames = territory.getBlocks().stream()
+                .map(block -> block.getBlockName())
+                .collect(Collectors.toList());
+
+        StandardResponse_BlockNames response = new StandardResponse_BlockNames(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                blockNames
         );
         return ResponseEntity.ok(response);
     }
@@ -117,6 +140,7 @@ public class WorkspaceController {
     }
 
     @DeleteMapping("/territories/{id}")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_Void> deleteTerritory(
             @PathVariable("id") String id,
             @RequestHeader("X-E2E-ID") UUID e2eId,
@@ -238,5 +262,12 @@ public class WorkspaceController {
         String status,
         String error,
         Void data
+    ) {}
+
+    public record StandardResponse_BlockNames(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        List<String> data
     ) {}
 }
