@@ -46,6 +46,14 @@ public class CustomerService {
     }
 
     @Transactional
+    public void softDeleteCustomer(String customerId) {
+        Customer customer = customerRepository.findById(customerId.trim())
+                .orElseThrow(() -> new EntityNotFoundException("Customer not found: " + customerId));
+        customer.setDeleted(true);
+        customerRepository.save(customer);
+    }
+
+    @Transactional
     public void collectPayment(String customerId, CollectPaymentRequestDto request, String agentEmployeeId) {
         Employee fieldAgent = resolveFieldAgent(agentEmployeeId);
         int year = request.year() != null ? request.year() : java.time.LocalDate.now().getYear();

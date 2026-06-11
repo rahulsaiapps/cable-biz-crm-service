@@ -28,18 +28,21 @@ public class DailyLedgerServiceImpl implements DailyLedgerService {
     private final IspSettlementRepository ispSettlementRepository;
     private final CustomerRepository customerRepository;
     private final EmployeeRepository employeeRepository;
+    private final PaymentProcessingService paymentProcessingService;
 
     public DailyLedgerServiceImpl(
             DailyExpenseRepository dailyExpenseRepository,
             DailyTransactionRepository dailyTransactionRepository,
             IspSettlementRepository ispSettlementRepository,
             CustomerRepository customerRepository,
-            EmployeeRepository employeeRepository) {
+            EmployeeRepository employeeRepository,
+            PaymentProcessingService paymentProcessingService) {
         this.dailyExpenseRepository = dailyExpenseRepository;
         this.dailyTransactionRepository = dailyTransactionRepository;
         this.ispSettlementRepository = ispSettlementRepository;
         this.customerRepository = customerRepository;
         this.employeeRepository = employeeRepository;
+        this.paymentProcessingService = paymentProcessingService;
     }
 
     @Override
@@ -212,17 +215,16 @@ public class DailyLedgerServiceImpl implements DailyLedgerService {
     @Override
     @Transactional
     public void recordManualCollection(RecordDailyTransactionRequestDto request, String agentEmployeeId) {
-        if (request.customerName() == null || request.customerName().isBlank()) {
-            throw new IllegalArgumentException("customer_name is required");
-        }
         if (request.amountCollected() == null || request.amountCollected() <= 0) {
             throw new IllegalArgumentException("amount_collected must be a positive number");
         }
 
-        List<Customer> matches = customerRepository.findByFullNameContainingIgnoreCase(request.customerName().trim());
-        Customer customer = matches.isEmpty() ? null : matches.get(0);
+        Customer customer = resolveCustomer(request);
         if (customer == null) {
-            throw new IllegalArgumentException("Customer not found: " + request.customerName());
+            String lookup = request.customerId() != null && !request.customerId().isBlank()
+                    ? request.customerId()
+                    : request.customerName();
+            throw new IllegalArgumentException("Customer not found: " + lookup);
         }
 
         Employee fieldAgent = employeeRepository.findById(agentEmployeeId).orElse(null);
@@ -238,25 +240,37 @@ public class DailyLedgerServiceImpl implements DailyLedgerService {
             mode = PaymentMode.ONLINE_UPI;
         }
 
-        LocalDateTime recordedAt = LocalDateTime.now();
+        LocalDate paymentDate = LocalDate.now();
         if (request.date() != null && !request.date().isBlank()) {
             try {
-                LocalDate parsed = LocalDate.parse(request.date().trim());
-                recordedAt = parsed.atTime(LocalTime.now());
+                paymentDate = LocalDate.parse(request.date().trim());
             } catch (Exception ignored) {
-                // keep now
+                // keep today
             }
         }
 
-        DailyTransaction transaction = new DailyTransaction(
-                UUID.randomUUID().toString(),
+        String billingMonth = PaymentProcessingService.normalizeMonth(paymentDate.getMonth().name());
+
+        paymentProcessingService.recordPayment(
+                customer.getCustomerId(),
                 BigDecimal.valueOf(request.amountCollected()),
+                List.of(billingMonth),
+                paymentDate.getYear(),
                 mode,
-                recordedAt,
-                customer,
                 fieldAgent
         );
-        dailyTransactionRepository.save(transaction);
+    }
+
+    private Customer resolveCustomer(RecordDailyTransactionRequestDto request) {
+        if (request.customerId() != null && !request.customerId().isBlank()) {
+            return customerRepository.findById(request.customerId().trim()).orElse(null);
+        }
+        if (request.customerName() == null || request.customerName().isBlank()) {
+            return null;
+        }
+        List<Customer> matches =
+                customerRepository.findByFullNameContainingIgnoreCase(request.customerName().trim());
+        return matches.isEmpty() ? null : matches.get(0);
     }
 
     private static final BigDecimal MAX_TRANSACTION_AMOUNT = new BigDecimal("10000000.00");

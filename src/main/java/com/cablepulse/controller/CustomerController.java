@@ -61,6 +61,22 @@ public class CustomerController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<StandardResponse_Void> deleteCustomer(
+            @PathVariable("id") String id,
+            @RequestHeader("X-E2E-ID") UUID e2eId,
+            @RequestHeader("X-Session-ID") UUID sessionId) {
+        customerService.softDeleteCustomer(id);
+
+        StandardResponse_Void response = new StandardResponse_Void(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                null
+        );
+        return ResponseEntity.ok(response);
+    }
+
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(EntityNotFoundException ex) {
         return errorResponse(HttpStatus.NOT_FOUND, ex.getMessage());

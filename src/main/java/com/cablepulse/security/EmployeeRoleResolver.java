@@ -2,6 +2,7 @@ package com.cablepulse.security;
 
 import com.cablepulse.model.Employee;
 import com.cablepulse.model.EmployeeRole;
+import com.cablepulse.repository.EmployeeRepository;
 import com.cablepulse.service.EmployeeReconciliationService;
 import com.google.firebase.auth.FirebaseToken;
 import org.slf4j.Logger;
@@ -24,9 +25,13 @@ public class EmployeeRoleResolver {
     private static final Logger logger = LoggerFactory.getLogger(EmployeeRoleResolver.class);
 
     private final EmployeeReconciliationService employeeReconciliationService;
+    private final EmployeeRepository employeeRepository;
 
-    public EmployeeRoleResolver(EmployeeReconciliationService employeeReconciliationService) {
+    public EmployeeRoleResolver(
+            EmployeeReconciliationService employeeReconciliationService,
+            EmployeeRepository employeeRepository) {
         this.employeeReconciliationService = employeeReconciliationService;
+        this.employeeRepository = employeeRepository;
     }
 
     public List<GrantedAuthority> resolveAuthorities(FirebaseToken decodedToken) {
@@ -62,6 +67,19 @@ public class EmployeeRoleResolver {
             return authorities.get(0).getAuthority();
         }
         return "ROLE_COLLECTION_BOY";
+    }
+
+    /** Resolves the role claim for a persisted Firebase UID (refresh-token flow). */
+    public String resolveRoleForUserId(String userId) {
+        return employeeRepository.findById(userId)
+                .map(employee -> employee.getRole() != null
+                        ? "ROLE_" + employee.getRole().name()
+                        : "ROLE_COLLECTION_BOY")
+                .orElse("ROLE_COLLECTION_BOY");
+    }
+
+    public List<GrantedAuthority> resolveAuthoritiesForUserId(String userId, String roleClaim) {
+        return List.of(new SimpleGrantedAuthority(roleClaim));
     }
 
     private EmployeeRole resolveEmployeeRole(FirebaseToken decodedToken) {

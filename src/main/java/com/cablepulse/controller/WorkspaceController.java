@@ -243,13 +243,16 @@ public class WorkspaceController {
     }
 
     private TerritorySummaryDTO toTerritorySummary(Territory territory) {
-        long customerCount = customerRepository.countByTerritory_TerritoryId(territory.getTerritoryId());
+        String territoryId = territory.getTerritoryId();
+        long customerCount = customerRepository.countByTerritory_TerritoryId(territoryId);
+        long activeCount = customerRepository.countPaidCustomersByTerritoryId(territoryId);
+        long pendingCount = customerRepository.countPendingCustomersByTerritoryId(territoryId);
         return new TerritorySummaryDTO(
-                territory.getTerritoryId(),
+                territoryId,
                 territory.getLocationName(),
                 customerCount,
-                customerCount,
-                0
+                activeCount,
+                pendingCount
         );
     }
 

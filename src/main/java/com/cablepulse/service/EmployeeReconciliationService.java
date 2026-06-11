@@ -4,6 +4,8 @@ import com.cablepulse.model.Employee;
 import com.cablepulse.model.EmployeeRole;
 import com.cablepulse.repository.EmployeeRepository;
 import com.google.firebase.auth.FirebaseToken;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -11,6 +13,8 @@ import java.util.Optional;
 
 @Service
 public class EmployeeReconciliationService {
+
+    private static final Logger logger = LoggerFactory.getLogger(EmployeeReconciliationService.class);
 
     static final String PENDING_ID_PREFIX = "PENDING-";
 
@@ -25,12 +29,24 @@ public class EmployeeReconciliationService {
      * PENDING-* placeholder on first sign-in when the Firebase UID is not yet linked.
      */
     public Employee resolveEmployee(FirebaseToken decodedToken) {
-        String firebaseUid = decodedToken.getUid();
+        try {
+            String firebaseUid = decodedToken.getUid();
 
-        return employeeRepository.findById(firebaseUid)
-                .or(() -> reconcilePendingEmployee(firebaseUid, decodedToken.getEmail()))
-                .or(() -> bootstrapOwnerIfMissing(decodedToken))
-                .orElse(null);
+            return employeeRepository.findById(firebaseUid)
+                    .or(() -> reconcilePendingEmployee(firebaseUid, decodedToken.getEmail()))
+                    .or(() -> bootstrapOwnerIfMissing(decodedToken))
+                    .orElse(null);
+        } catch (Exception ex) {
+            logger.warn(
+                    "resolveEmployee degraded for uid={}: {}",
+                    decodedToken.getUid(),
+                    ex.getMessage());
+            return null;
+        }
+    }
+
+    public Optional<Employee> findEmployeeById(String firebaseUid) {
+        return employeeRepository.findById(firebaseUid);
     }
 
     /**

@@ -1,8 +1,9 @@
 package com.cablepulse.security;
 
-import com.cablepulse.service.EmployeeReconciliationService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,42 +25,81 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private final FirebaseAuth firebaseAuth;
     private final EmployeeRoleResolver employeeRoleResolver;
+    private final JwtTokenService jwtTokenService;
 
     public FirebaseAuthenticationFilter(
             FirebaseAuth firebaseAuth,
-            EmployeeRoleResolver employeeRoleResolver) {
+            EmployeeRoleResolver employeeRoleResolver,
+            JwtTokenService jwtTokenService) {
         this.firebaseAuth = firebaseAuth;
         this.employeeRoleResolver = employeeRoleResolver;
+        this.jwtTokenService = jwtTokenService;
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-            throws ServletException, IOException {
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain) throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String idToken = authHeader.substring(7);
-            try {
-                FirebaseToken decodedToken = firebaseAuth.verifyIdToken(idToken);
-                String uid = decodedToken.getUid();
-                List<GrantedAuthority> authorities = employeeRoleResolver.resolveAuthorities(decodedToken);
-
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        uid,
-                        idToken,
-                        authorities
-                );
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-
-            } catch (Exception e) {
-                logger.error("CRITICAL: Firebase token verification failed! Reason: {}", e.getMessage(), e);
+            String bearerToken = authHeader.substring(7);
+            if (!authenticateBackendJwt(request, bearerToken) && !authenticateFirebaseToken(request, bearerToken)) {
                 SecurityContextHolder.clearContext();
             }
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private boolean authenticateBackendJwt(HttpServletRequest request, String bearerToken) {
+        try {
+            Claims claims = jwtTokenService.parseClaims(bearerToken);
+            if (!jwtTokenService.isAccessToken(claims)) {
+                return false;
+            }
+
+            String uid = claims.getSubject();
+            String role = claims.get(JwtTokenService.CLAIM_ROLE, String.class);
+            if (role == null || role.isBlank()) {
+                role = employeeRoleResolver.resolveRoleForUserId(uid);
+            }
+
+            List<GrantedAuthority> authorities =
+                    employeeRoleResolver.resolveAuthoritiesForUserId(uid, role);
+            setAuthentication(request, uid, bearerToken, authorities);
+            return true;
+        } catch (JwtException e) {
+            return false;
+        }
+    }
+
+    private boolean authenticateFirebaseToken(HttpServletRequest request, String bearerToken) {
+        try {
+            FirebaseToken decodedToken = firebaseAuth.verifyIdToken(bearerToken);
+            String uid = decodedToken.getUid();
+            List<GrantedAuthority> authorities = employeeRoleResolver.resolveAuthorities(decodedToken);
+            setAuthentication(request, uid, bearerToken, authorities);
+            return true;
+        } catch (Exception e) {
+            logger.debug("Firebase token verification failed: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private void setAuthentication(
+            HttpServletRequest request,
+            String uid,
+            String credentials,
+            List<GrantedAuthority> authorities) {
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                uid,
+                credentials,
+                authorities
+        );
+        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
     }
 }

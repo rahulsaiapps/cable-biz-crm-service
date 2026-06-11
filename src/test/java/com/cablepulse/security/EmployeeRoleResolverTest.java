@@ -2,6 +2,7 @@ package com.cablepulse.security;
 
 import com.cablepulse.model.Employee;
 import com.cablepulse.model.EmployeeRole;
+import com.cablepulse.repository.EmployeeRepository;
 import com.cablepulse.service.EmployeeReconciliationService;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,11 +25,14 @@ class EmployeeRoleResolverTest {
     @Mock
     private EmployeeReconciliationService employeeReconciliationService;
 
+    @Mock
+    private EmployeeRepository employeeRepository;
+
     private EmployeeRoleResolver resolver;
 
     @BeforeEach
     void setUp() {
-        resolver = new EmployeeRoleResolver(employeeReconciliationService);
+        resolver = new EmployeeRoleResolver(employeeReconciliationService, employeeRepository);
     }
 
     @Test

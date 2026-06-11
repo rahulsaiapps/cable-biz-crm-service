@@ -414,6 +414,7 @@ public class DtoClasses {
     ) {}
 
     public record RecordDailyTransactionRequestDto(
+        @JsonProperty("customer_id") String customerId,
         @JsonProperty("customer_name") String customerName,
         @JsonProperty("block_code") String blockCode,
         @JsonProperty("amount_collected") Integer amountCollected,

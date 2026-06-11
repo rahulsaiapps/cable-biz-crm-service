@@ -17,12 +17,15 @@ public class SecurityConfig {
 
     private final FirebaseAuth firebaseAuth;
     private final EmployeeRoleResolver employeeRoleResolver;
+    private final JwtTokenService jwtTokenService;
 
     public SecurityConfig(
             FirebaseAuth firebaseAuth,
-            EmployeeRoleResolver employeeRoleResolver) {
+            EmployeeRoleResolver employeeRoleResolver,
+            JwtTokenService jwtTokenService) {
         this.firebaseAuth = firebaseAuth;
         this.employeeRoleResolver = employeeRoleResolver;
+        this.jwtTokenService = jwtTokenService;
     }
 
     @Bean
@@ -35,7 +38,7 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
             .addFilterBefore(
-                    new FirebaseAuthenticationFilter(firebaseAuth, employeeRoleResolver),
+                    new FirebaseAuthenticationFilter(firebaseAuth, employeeRoleResolver, jwtTokenService),
                     UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

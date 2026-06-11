@@ -216,4 +216,73 @@ class CustomerControllerCreateTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.newCustomerId").exists());
     }
+
+    @Test
+    void listTerritories_afterCreateCustomer_returnsAccurateCounts() throws Exception {
+        mockMvc.perform(post("/api/v1/customers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Counted Customer",
+                                  "territory_id": "%s",
+                                  "territory_name": "Kolamuru"
+                                }
+                                """.formatted(territoryId)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/workspace/territories")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].customer_count").value(1))
+                .andExpect(jsonPath("$.data[0].active_count").value(1))
+                .andExpect(jsonPath("$.data[0].pending_count").value(0));
+    }
+
+    @Test
+    void deleteCustomer_softDeletesAndHidesFromWorkspaceList() throws Exception {
+        mockMvc.perform(post("/api/v1/customers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "To Delete",
+                                  "territory_id": "%s",
+                                  "territory_name": "Kolamuru"
+                                }
+                                """.formatted(territoryId)))
+                .andExpect(status().isCreated());
+
+        String customerId = customerRepository.findAll().get(0).getCustomerId();
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(
+                        "/api/v1/customers/" + customerId)
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCESS"));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/api/v1/customers/" + customerId)
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/api/v1/workspace/customers")
+                        .param("locationId", territoryId)
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.customers").isEmpty());
+    }
 }

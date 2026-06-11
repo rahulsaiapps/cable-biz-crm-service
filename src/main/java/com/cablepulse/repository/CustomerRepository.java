@@ -45,6 +45,7 @@ public interface CustomerRepository extends JpaRepository<Customer, String> {
             value = """
                     SELECT COALESCE(MAX(serial_number), 0) FROM customers
                     WHERE territory_id = :territoryId
+                      AND is_deleted = false
                     """,
             nativeQuery = true)
     int findMaxSerialNumberNative(@Param("territoryId") String territoryId);
@@ -54,9 +55,36 @@ public interface CustomerRepository extends JpaRepository<Customer, String> {
                     SELECT COALESCE(MAX(serial_number), 0) + 1
                     FROM customers
                     WHERE territory_id = :territoryId
+                      AND is_deleted = false
                     """,
             nativeQuery = true)
     int allocateNextSerialNumber(@Param("territoryId") String territoryId);
+
+    @Query(
+            value = """
+                    SELECT COUNT(*) FROM customers c
+                    WHERE c.territory_id = :territoryId
+                      AND c.is_deleted = false
+                      AND COALESCE((
+                          SELECT SUM(l.due_amount) FROM customer_ledgers l
+                          WHERE l.customer_id = c.customer_id
+                      ), 0) <= 0
+                    """,
+            nativeQuery = true)
+    long countPaidCustomersByTerritoryId(@Param("territoryId") String territoryId);
+
+    @Query(
+            value = """
+                    SELECT COUNT(*) FROM customers c
+                    WHERE c.territory_id = :territoryId
+                      AND c.is_deleted = false
+                      AND COALESCE((
+                          SELECT SUM(l.due_amount) FROM customer_ledgers l
+                          WHERE l.customer_id = c.customer_id
+                      ), 0) > 0
+                    """,
+            nativeQuery = true)
+    long countPendingCustomersByTerritoryId(@Param("territoryId") String territoryId);
 
     List<Customer> findByFullNameContainingIgnoreCase(String name);
 

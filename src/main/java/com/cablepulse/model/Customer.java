@@ -1,10 +1,15 @@
 package com.cablepulse.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
+
 import java.math.BigDecimal;
 
 @Entity
 @Table(name = "customers")
+@SQLDelete(sql = "UPDATE customers SET is_deleted = true WHERE customer_id = ?")
+@SQLRestriction("is_deleted = false")
 public class Customer {
 
     @Id
@@ -45,6 +50,9 @@ public class Customer {
 
     @Column(name = "card_number")
     private String cardNumber;
+
+    @Column(name = "is_deleted", nullable = false)
+    private boolean deleted = false;
 
     public Customer() {}
 
@@ -169,5 +177,13 @@ public class Customer {
 
     public void setCardNumber(String cardNumber) {
         this.cardNumber = cardNumber;
+    }
+
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 }
