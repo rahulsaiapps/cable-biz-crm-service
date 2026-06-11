@@ -3,7 +3,6 @@ package com.cablepulse.controller;
 import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.service.DashboardService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -24,11 +23,7 @@ public class DashboardController {
             @RequestHeader("X-E2E-ID") UUID e2eId,
             @RequestHeader("X-Session-ID") UUID sessionId) {
 
-        boolean isCollectionBoy = SecurityContextHolder.getContext().getAuthentication().getAuthorities()
-                .stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_COLLECTION_BOY"));
-
-        DashboardData dashboardData = dashboardService.getDashboardMetrics(!isCollectionBoy);
+        DashboardData dashboardData = dashboardService.getDashboardMetrics(true);
         StandardResponse_DashboardData response = new StandardResponse_DashboardData(
                 LocalDateTime.now(),
                 "SUCCESS",

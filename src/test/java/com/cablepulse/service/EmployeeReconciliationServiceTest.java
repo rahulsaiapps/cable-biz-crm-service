@@ -59,4 +59,23 @@ class EmployeeReconciliationServiceTest {
         assertThat(resolved).isNull();
         assertThat(employeeRepository.findById("owner-uid-1")).isPresent();
     }
+
+    @Test
+    void resolveEmployee_bootstrapsOwnerWhenNoOwnerExists() {
+        Employee agent = new Employee("agent-uid", "Field Agent", EmployeeRole.COLLECTION_BOY);
+        agent.setEmail("agent@example.com");
+        employeeRepository.save(agent);
+
+        FirebaseToken token = mock(FirebaseToken.class);
+        when(token.getUid()).thenReturn("operator-firebase-uid");
+        when(token.getName()).thenReturn("Rahul Sai");
+        when(token.getEmail()).thenReturn("rahul@example.com");
+
+        Employee resolved = reconciliationService.resolveEmployee(token);
+
+        assertThat(resolved).isNotNull();
+        assertThat(resolved.getEmployeeId()).isEqualTo("operator-firebase-uid");
+        assertThat(resolved.getRole()).isEqualTo(EmployeeRole.OWNER);
+        assertThat(resolved.getEmail()).isEqualTo("rahul@example.com");
+    }
 }

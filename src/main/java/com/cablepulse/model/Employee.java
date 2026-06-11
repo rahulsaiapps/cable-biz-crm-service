@@ -15,7 +15,7 @@ public class Employee {
     @Column(name = "full_name", nullable = false)
     private String fullName;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = EmployeeRoleConverter.class)
     @Column(name = "role", nullable = false)
     private EmployeeRole role;
 

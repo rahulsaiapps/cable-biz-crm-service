@@ -108,4 +108,47 @@ class CustomerControllerCreateTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.newCustomerId").exists());
     }
+
+    @Test
+    void createCustomer_collectionBoyRole_returnsCreated() throws Exception {
+        FirebaseToken collectionBoyToken = mock(FirebaseToken.class);
+        when(collectionBoyToken.getUid()).thenReturn("collection-boy-uid");
+        when(collectionBoyToken.getClaims()).thenReturn(Map.of("role", "COLLECTION_BOY"));
+        when(firebaseAuth.verifyIdToken(anyString())).thenReturn(collectionBoyToken);
+
+        mockMvc.perform(post("/api/v1/customers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Field Agent Customer",
+                                  "territory_id": "%s",
+                                  "territory_name": "Kolamuru",
+                                  "plan_name": "Basic Pack",
+                                  "plan_monthly_rate": 150
+                                }
+                                """.formatted(territoryId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.newCustomerId").exists());
+    }
+
+    @Test
+    void createCustomer_withoutPlan_returnsCreated() throws Exception {
+        mockMvc.perform(post("/api/v1/customers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "No Plan Customer",
+                                  "territory_id": "%s",
+                                  "territory_name": "Kolamuru"
+                                }
+                                """.formatted(territoryId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.newCustomerId").exists());
+    }
 }

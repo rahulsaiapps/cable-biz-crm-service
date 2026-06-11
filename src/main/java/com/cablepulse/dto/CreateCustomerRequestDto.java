@@ -35,7 +35,6 @@ public class CreateCustomerRequestDto {
     @JsonProperty("plan_name")
     private String planName;
 
-    @NotNull
     @PositiveOrZero
     @JsonProperty("plan_monthly_rate")
     private BigDecimal planMonthlyRate;

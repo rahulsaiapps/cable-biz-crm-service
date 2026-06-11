@@ -15,7 +15,6 @@ import com.cablepulse.service.TerritoryService;
 import com.cablepulse.service.WorkspaceProviderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
@@ -153,7 +152,6 @@ public class WorkspaceController {
     }
 
     @DeleteMapping("/territories/{id}")
-    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_Void> deleteTerritory(
             @PathVariable("id") String id,
             @RequestHeader("X-E2E-ID") UUID e2eId,

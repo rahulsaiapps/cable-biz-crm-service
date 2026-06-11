@@ -1,6 +1,7 @@
 package com.cablepulse.service;
 
 import com.cablepulse.model.Employee;
+import com.cablepulse.model.EmployeeRole;
 import com.cablepulse.repository.EmployeeRepository;
 import com.google.firebase.auth.FirebaseToken;
 import org.springframework.stereotype.Service;
@@ -28,7 +29,35 @@ public class EmployeeReconciliationService {
 
         return employeeRepository.findById(firebaseUid)
                 .or(() -> reconcilePendingEmployee(firebaseUid, decodedToken.getEmail()))
+                .or(() -> bootstrapOwnerIfMissing(decodedToken))
                 .orElse(null);
+    }
+
+    /**
+     * When the workspace has no OWNER yet, the first Firebase sign-in is
+     * promoted to OWNER so the operator can manage customers and territories.
+     */
+    @Transactional
+    Optional<Employee> bootstrapOwnerIfMissing(FirebaseToken decodedToken) {
+        boolean ownerExists = employeeRepository.findAll().stream()
+                .anyMatch(employee -> employee.getRole() == EmployeeRole.OWNER);
+        if (ownerExists) {
+            return Optional.empty();
+        }
+
+        String firebaseUid = decodedToken.getUid();
+        String name = decodedToken.getName();
+        String fullName = (name != null && !name.isBlank()) ? name.trim() : "Workspace Owner";
+
+        Employee owner = new Employee(
+                firebaseUid,
+                fullName,
+                EmployeeRole.OWNER);
+        if (decodedToken.getEmail() != null && !decodedToken.getEmail().isBlank()) {
+            owner.setEmail(decodedToken.getEmail().trim());
+        }
+
+        return Optional.of(employeeRepository.save(owner));
     }
 
     @Transactional

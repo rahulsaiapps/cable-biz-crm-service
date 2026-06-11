@@ -52,7 +52,16 @@ public class EmployeeRoleResolver {
     }
 
     public String resolveRoleClaim(FirebaseToken decodedToken) {
-        return "ROLE_" + resolveEmployeeRole(decodedToken).name();
+        List<GrantedAuthority> authorities = resolveAuthorities(decodedToken);
+        for (GrantedAuthority authority : authorities) {
+            if ("ROLE_OWNER".equals(authority.getAuthority())) {
+                return "ROLE_OWNER";
+            }
+        }
+        if (!authorities.isEmpty()) {
+            return authorities.get(0).getAuthority();
+        }
+        return "ROLE_COLLECTION_BOY";
     }
 
     private EmployeeRole resolveEmployeeRole(FirebaseToken decodedToken) {

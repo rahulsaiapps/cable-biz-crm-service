@@ -78,6 +78,14 @@ class EmployeeRoleResolverTest {
                 .containsExactly("ROLE_OWNER");
     }
 
+    @Test
+    void resolveRoleClaim_firebaseOwnerClaim_returnsOwnerWithoutEmployeeRow() {
+        FirebaseToken token = mock(FirebaseToken.class);
+        when(token.getClaims()).thenReturn(Map.of("role", "OWNER"));
+
+        assertThat(resolver.resolveRoleClaim(token)).isEqualTo("ROLE_OWNER");
+    }
+
     private static FirebaseToken mockToken(String uid, Map<String, Object> claims) {
         FirebaseToken token = mock(FirebaseToken.class);
         when(token.getUid()).thenReturn(uid);

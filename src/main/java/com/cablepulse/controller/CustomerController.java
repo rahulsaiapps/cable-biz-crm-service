@@ -48,7 +48,7 @@ public class CustomerController {
             @Valid @RequestBody CreateCustomerRequestDto request,
             @RequestHeader("X-E2E-ID") UUID e2eId,
             @RequestHeader("X-Session-ID") UUID sessionId) {
-
+        // Any authenticated role (OWNER or COLLECTION_BOY) may register customers.
         Customer saved = customerRegistrationService.registerCustomer(request);
 
         StandardResponse_CreateCustomer response = new StandardResponse_CreateCustomer(
