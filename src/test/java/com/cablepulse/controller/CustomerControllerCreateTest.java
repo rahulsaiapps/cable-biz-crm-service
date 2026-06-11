@@ -1,6 +1,7 @@
 package com.cablepulse.controller;
 
 import com.cablepulse.model.Territory;
+import com.cablepulse.model.Customer;
 import com.cablepulse.repository.ConnectionProviderRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.TerritoryRepository;
@@ -176,6 +177,38 @@ class CustomerControllerCreateTest {
                         .content("""
                                 {
                                   "name": "Second Customer Different Name",
+                                  "territory_id": "%s",
+                                  "territory_name": "Kolamuru"
+                                }
+                                """.formatted(territoryId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.newCustomerId").exists());
+    }
+
+    /** Reproduces production Supabase bug: serial 1 exists in another territory. */
+    @Test
+    void createCustomer_whenSerialOneTakenInOtherTerritory_returnsCreated() throws Exception {
+        String otherTerritoryId = "ter_" + UUID.randomUUID().toString().replace("-", "");
+        Territory other = territoryRepository.save(new Territory(otherTerritoryId, "Other Village"));
+        customerRepository.save(new Customer(
+                "cust_existing_serial_1",
+                1,
+                "Existing Elsewhere",
+                null,
+                null,
+                null,
+                null,
+                other,
+                null));
+
+        mockMvc.perform(post("/api/v1/customers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Rahul",
                                   "territory_id": "%s",
                                   "territory_name": "Kolamuru"
                                 }

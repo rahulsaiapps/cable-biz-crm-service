@@ -42,11 +42,10 @@ public class CustomerRegistrationService {
         String customerId = "cust_" + UUID.randomUUID().toString().replace("-", "");
 
         DataIntegrityViolationException lastConflict = null;
-        int baseSerial =
-                customerRepository.findMaxSerialNumberNative(territory.getTerritoryId());
+        String territoryId = territory.getTerritoryId();
 
         for (int attempt = 0; attempt < MAX_SERIAL_ALLOCATION_ATTEMPTS; attempt++) {
-            int serialNumber = baseSerial + 1 + attempt;
+            int serialNumber = nextAvailableSerial(territoryId) + 1 + attempt;
             Customer customer = buildCustomer(
                     customerId,
                     serialNumber,
@@ -64,6 +63,12 @@ public class CustomerRegistrationService {
         throw lastConflict != null
                 ? lastConflict
                 : new IllegalStateException("Unable to allocate customer serial number");
+    }
+
+    private int nextAvailableSerial(String territoryId) {
+        int territoryMax = customerRepository.findMaxSerialNumberNative(territoryId);
+        int globalMax = customerRepository.findMaxSerialNumberGlobal();
+        return Math.max(territoryMax, globalMax);
     }
 
     private GlobalPlan resolvePlan(String planName) {
