@@ -50,9 +50,13 @@ public interface CustomerRepository extends JpaRepository<Customer, String> {
     int findMaxSerialNumberNative(@Param("territoryId") String territoryId);
 
     @Query(
-            value = "SELECT COALESCE(MAX(serial_number), 0) FROM customers",
+            value = """
+                    SELECT COALESCE(MAX(serial_number), 0) + 1
+                    FROM customers
+                    WHERE territory_id = :territoryId
+                    """,
             nativeQuery = true)
-    int findMaxSerialNumberGlobal();
+    int allocateNextSerialNumber(@Param("territoryId") String territoryId);
 
     List<Customer> findByFullNameContainingIgnoreCase(String name);
 

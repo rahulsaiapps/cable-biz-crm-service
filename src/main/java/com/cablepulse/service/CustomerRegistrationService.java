@@ -8,6 +8,8 @@ import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
 import com.cablepulse.repository.TerritoryRepository;
 import jakarta.persistence.EntityNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,6 +22,7 @@ import java.util.UUID;
 @Service
 public class CustomerRegistrationService {
 
+    private static final Logger logger = LoggerFactory.getLogger(CustomerRegistrationService.class);
     private static final int MAX_SERIAL_ALLOCATION_ATTEMPTS = 8;
 
     private final CustomerRepository customerRepository;
@@ -43,28 +46,37 @@ public class CustomerRegistrationService {
     }
 
     public Customer registerCustomer(CreateCustomerRequestDto request) {
-        Territory territory = territoryRepository.findById(request.getTerritoryId().trim())
-                .orElseThrow(() -> new EntityNotFoundException(
-                        "Territory not found: " + request.getTerritoryId()));
+        String territoryId = request.getTerritoryId().trim();
+        if (!territoryRepository.existsById(territoryId)) {
+            throw new EntityNotFoundException("Territory not found: " + territoryId);
+        }
 
-        GlobalPlan matchedPlan = resolvePlan(request.getPlanName());
-        String territoryId = territory.getTerritoryId();
+        String matchedPlanId = resolvePlanId(request.getPlanName());
 
         DataIntegrityViolationException lastConflict = null;
 
         for (int attempt = 0; attempt < MAX_SERIAL_ALLOCATION_ATTEMPTS; attempt++) {
             String customerId = "cust_" + UUID.randomUUID().toString().replace("-", "");
-            int serialNumber = nextAvailableSerial(territoryId) + 1 + attempt;
+            int serialNumber = customerRepository.allocateNextSerialNumber(territoryId);
 
             try {
                 return self.saveCustomerAttempt(
                         customerId,
                         serialNumber,
                         request,
-                        territory,
-                        matchedPlan);
+                        territoryId,
+                        matchedPlanId);
             } catch (DataIntegrityViolationException ex) {
                 lastConflict = ex;
+                logger.warn(
+                        "Customer serial allocation conflict territoryId={} serial={} attempt={}/{} cause={}",
+                        territoryId,
+                        serialNumber,
+                        attempt + 1,
+                        MAX_SERIAL_ALLOCATION_ATTEMPTS,
+                        ex.getMostSpecificCause() != null
+                                ? ex.getMostSpecificCause().getMessage()
+                                : ex.getMessage());
             }
         }
 
@@ -78,8 +90,12 @@ public class CustomerRegistrationService {
             String customerId,
             int serialNumber,
             CreateCustomerRequestDto request,
-            Territory territory,
-            GlobalPlan matchedPlan) {
+            String territoryId,
+            String matchedPlanId) {
+        Territory territory = territoryRepository.getReferenceById(territoryId);
+        GlobalPlan matchedPlan = matchedPlanId != null
+                ? globalPlanRepository.getReferenceById(matchedPlanId)
+                : null;
         Customer customer = buildCustomer(
                 customerId,
                 serialNumber,
@@ -89,18 +105,13 @@ public class CustomerRegistrationService {
         return customerRepository.save(customer);
     }
 
-    private int nextAvailableSerial(String territoryId) {
-        int territoryMax = customerRepository.findMaxSerialNumberNative(territoryId);
-        int globalMax = customerRepository.findMaxSerialNumberGlobal();
-        return Math.max(territoryMax, globalMax);
-    }
-
-    private GlobalPlan resolvePlan(String planName) {
+    private String resolvePlanId(String planName) {
         if (planName == null || planName.isBlank()) {
             return null;
         }
         return globalPlanRepository.findAll().stream()
                 .filter(plan -> planName.equalsIgnoreCase(plan.getPlanName()))
+                .map(GlobalPlan::getPlanId)
                 .findFirst()
                 .orElse(null);
     }

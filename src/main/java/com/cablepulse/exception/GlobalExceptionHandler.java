@@ -1,5 +1,7 @@
 package com.cablepulse.exception;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -20,6 +22,8 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleMessageNotReadable(HttpMessageNotReadableException ex) {
@@ -53,12 +57,31 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, Object>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        String detail = resolveDataIntegrityMessage(ex);
+        logger.error("Data integrity violation: {}", detail, ex);
+
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", LocalDateTime.now());
         body.put("status", "ERROR");
-        body.put("error", "A record with the same unique value already exists");
+        body.put("error", detail);
         body.put("data", null);
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    private static String resolveDataIntegrityMessage(DataIntegrityViolationException ex) {
+        Throwable root = ex.getMostSpecificCause();
+        String message = root != null ? root.getMessage() : ex.getMessage();
+        if (message == null || message.isBlank()) {
+            return "A record with the same unique value already exists";
+        }
+        if (message.contains("uq_customers_territory_serial")
+                || message.contains("duplicate key value violates unique constraint")) {
+            return "Customer number already exists in this territory. Retry or contact support.";
+        }
+        if (message.contains("violates foreign key constraint")) {
+            return "Customer could not be saved because linked territory or plan data is invalid.";
+        }
+        return message;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
