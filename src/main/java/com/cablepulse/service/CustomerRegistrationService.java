@@ -8,8 +8,11 @@ import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
 import com.cablepulse.repository.TerritoryRepository;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -22,6 +25,7 @@ public class CustomerRegistrationService {
     private final CustomerRepository customerRepository;
     private final TerritoryRepository territoryRepository;
     private final GlobalPlanRepository globalPlanRepository;
+    private CustomerRegistrationService self;
 
     public CustomerRegistrationService(
             CustomerRepository customerRepository,
@@ -32,29 +36,33 @@ public class CustomerRegistrationService {
         this.globalPlanRepository = globalPlanRepository;
     }
 
-    @Transactional
+    @Autowired
+    @Lazy
+    void setSelf(CustomerRegistrationService self) {
+        this.self = self;
+    }
+
     public Customer registerCustomer(CreateCustomerRequestDto request) {
         Territory territory = territoryRepository.findById(request.getTerritoryId().trim())
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Territory not found: " + request.getTerritoryId()));
 
         GlobalPlan matchedPlan = resolvePlan(request.getPlanName());
-        String customerId = "cust_" + UUID.randomUUID().toString().replace("-", "");
-
-        DataIntegrityViolationException lastConflict = null;
         String territoryId = territory.getTerritoryId();
 
+        DataIntegrityViolationException lastConflict = null;
+
         for (int attempt = 0; attempt < MAX_SERIAL_ALLOCATION_ATTEMPTS; attempt++) {
+            String customerId = "cust_" + UUID.randomUUID().toString().replace("-", "");
             int serialNumber = nextAvailableSerial(territoryId) + 1 + attempt;
-            Customer customer = buildCustomer(
-                    customerId,
-                    serialNumber,
-                    request,
-                    territory,
-                    matchedPlan);
 
             try {
-                return customerRepository.save(customer);
+                return self.saveCustomerAttempt(
+                        customerId,
+                        serialNumber,
+                        request,
+                        territory,
+                        matchedPlan);
             } catch (DataIntegrityViolationException ex) {
                 lastConflict = ex;
             }
@@ -63,6 +71,22 @@ public class CustomerRegistrationService {
         throw lastConflict != null
                 ? lastConflict
                 : new IllegalStateException("Unable to allocate customer serial number");
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    Customer saveCustomerAttempt(
+            String customerId,
+            int serialNumber,
+            CreateCustomerRequestDto request,
+            Territory territory,
+            GlobalPlan matchedPlan) {
+        Customer customer = buildCustomer(
+                customerId,
+                serialNumber,
+                request,
+                territory,
+                matchedPlan);
+        return customerRepository.save(customer);
     }
 
     private int nextAvailableSerial(String territoryId) {
