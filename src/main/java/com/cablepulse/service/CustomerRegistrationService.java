@@ -7,6 +7,7 @@ import com.cablepulse.model.Territory;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.security.WorkspaceAuthorizationService;
 import jakarta.persistence.EntityNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,15 +29,18 @@ public class CustomerRegistrationService {
     private final CustomerRepository customerRepository;
     private final TerritoryRepository territoryRepository;
     private final GlobalPlanRepository globalPlanRepository;
+    private final WorkspaceAuthorizationService workspaceAuthorizationService;
     private CustomerRegistrationService self;
 
     public CustomerRegistrationService(
             CustomerRepository customerRepository,
             TerritoryRepository territoryRepository,
-            GlobalPlanRepository globalPlanRepository) {
+            GlobalPlanRepository globalPlanRepository,
+            WorkspaceAuthorizationService workspaceAuthorizationService) {
         this.customerRepository = customerRepository;
         this.territoryRepository = territoryRepository;
         this.globalPlanRepository = globalPlanRepository;
+        this.workspaceAuthorizationService = workspaceAuthorizationService;
     }
 
     @Autowired
@@ -47,6 +51,7 @@ public class CustomerRegistrationService {
 
     public Customer registerCustomer(CreateCustomerRequestDto request) {
         String territoryId = request.getTerritoryId().trim();
+        workspaceAuthorizationService.assertTerritoryAccess(territoryId);
         if (!territoryRepository.existsById(territoryId)) {
             throw new EntityNotFoundException("Territory not found: " + territoryId);
         }

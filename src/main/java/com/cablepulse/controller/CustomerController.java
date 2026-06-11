@@ -8,17 +8,21 @@ import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.service.CustomerRegistrationService;
 import com.cablepulse.service.CustomerService;
+import com.cablepulse.security.WorkspaceAuthorizationService;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.access.prepost.PreAuthorize;
+import com.cablepulse.util.EtagSupport;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
+import java.time.YearMonth;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -31,16 +35,19 @@ public class CustomerController {
     private final CustomerLedgerRepository customerLedgerRepository;
     private final CustomerRegistrationService customerRegistrationService;
     private final CustomerService customerService;
+    private final WorkspaceAuthorizationService workspaceAuthorizationService;
 
     public CustomerController(
             CustomerRepository customerRepository,
             CustomerLedgerRepository customerLedgerRepository,
             CustomerRegistrationService customerRegistrationService,
-            CustomerService customerService) {
+            CustomerService customerService,
+            WorkspaceAuthorizationService workspaceAuthorizationService) {
         this.customerRepository = customerRepository;
         this.customerLedgerRepository = customerLedgerRepository;
         this.customerRegistrationService = customerRegistrationService;
         this.customerService = customerService;
+        this.workspaceAuthorizationService = workspaceAuthorizationService;
     }
 
     @PostMapping
@@ -62,6 +69,7 @@ public class CustomerController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_Void> deleteCustomer(
             @PathVariable("id") String id,
             @RequestHeader("X-E2E-ID") UUID e2eId,
@@ -111,17 +119,20 @@ public class CustomerController {
     @GetMapping("/{id}")
     public ResponseEntity<StandardResponse_CustomerProfile> getCustomerProfile(
             @PathVariable("id") String id,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
             @RequestHeader("X-E2E-ID") UUID e2eId,
             @RequestHeader("X-Session-ID") UUID sessionId) {
 
         CustomerProfileDTO profile = customerService.getCustomerProfile(id);
-        StandardResponse_CustomerProfile response = new StandardResponse_CustomerProfile(
-                LocalDateTime.now(),
-                "SUCCESS",
-                null,
-                profile
-        );
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, profile, () -> {
+            StandardResponse_CustomerProfile response = new StandardResponse_CustomerProfile(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    profile
+            );
+            return ResponseEntity.ok(response);
+        });
     }
 
     @PostMapping("/{id}/payments")
@@ -131,7 +142,8 @@ public class CustomerController {
             @RequestHeader("X-E2E-ID") UUID e2eId,
             @RequestHeader("X-Session-ID") UUID sessionId) {
 
-        String agentId = SecurityContextHolder.getContext().getAuthentication().getName();
+        String agentId = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication().getName();
         customerService.collectPayment(id, request, agentId);
 
         StandardResponse_Void response = new StandardResponse_Void(
@@ -163,8 +175,11 @@ public class CustomerController {
     @GetMapping("/{id}/ledger")
     public ResponseEntity<StandardResponse_LedgerData> getCustomerLedger(
             @PathVariable("id") String id,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
             @RequestHeader("X-E2E-ID") UUID e2eId,
             @RequestHeader("X-Session-ID") UUID sessionId) {
+
+        workspaceAuthorizationService.assertCustomerAccess(id);
 
         Customer customer = customerRepository.findById(id).orElse(null);
         String fullName = customer != null ? customer.getFullName() : "Unknown";
@@ -187,20 +202,23 @@ public class CustomerController {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         LedgerData ledgerData = new LedgerData(id, fullName, totalBalanceDue, items);
-        StandardResponse_LedgerData response = new StandardResponse_LedgerData(
-                LocalDateTime.now(),
-                "SUCCESS",
-                null,
-                ledgerData
-        );
 
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, ledgerData, () -> {
+            StandardResponse_LedgerData response = new StandardResponse_LedgerData(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    ledgerData
+            );
+            return ResponseEntity.ok(response);
+        });
     }
 
     @GetMapping("/search")
     public ResponseEntity<StandardResponse_SearchData> searchCustomers(
             @RequestParam("name") String name,
-            @RequestParam(value = "block", required = false) String block) {
+            @RequestParam(value = "block", required = false) String block,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
 
         List<Customer> customers;
         if (block != null && !block.trim().isEmpty()) {
@@ -209,34 +227,48 @@ public class CustomerController {
             customers = customerRepository.findByFullNameContainingIgnoreCase(name);
         }
 
+        customers = workspaceAuthorizationService.filterAccessibleCustomers(customers);
+
         List<SearchItemDTO> suggestions = customers.stream().map(c -> {
             String label = c.getSerialNumber() + ". " + c.getFullName() +
                     (c.getBlockName() != null && !c.getBlockName().isEmpty() ? " (" + c.getBlockName() + ")" : "");
             return new SearchItemDTO(c.getCustomerId(), label);
         }).collect(Collectors.toList());
 
-        StandardResponse_SearchData response = new StandardResponse_SearchData(
-                LocalDateTime.now(),
-                "SUCCESS",
-                null,
-                suggestions
-        );
-
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, suggestions, () -> {
+            StandardResponse_SearchData response = new StandardResponse_SearchData(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    suggestions
+            );
+            return ResponseEntity.ok(response);
+        });
     }
 
     private boolean isFutureMonth(int year, String monthStr) {
-        if (year > 2026) return true;
-        if (year < 2026) return false;
+        YearMonth billingMonth = parseBillingYearMonth(year, monthStr);
+        if (billingMonth == null) {
+            return false;
+        }
+        return billingMonth.isAfter(YearMonth.from(LocalDate.now()));
+    }
+
+    private static YearMonth parseBillingYearMonth(int year, String monthStr) {
+        if (monthStr == null || monthStr.isBlank()) {
+            return null;
+        }
 
         List<String> months = List.of("JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
                 "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER",
                 "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC");
 
-        int index = months.indexOf(monthStr.toUpperCase());
-        if (index == -1) return false;
+        int index = months.indexOf(monthStr.toUpperCase(Locale.ROOT));
+        if (index == -1) {
+            return null;
+        }
 
         int monthValue = (index % 12) + 1;
-        return monthValue > 6; // June 2026 is the limit context
+        return YearMonth.of(year, monthValue);
     }
 }

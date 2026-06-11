@@ -6,6 +6,8 @@ import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.EmployeeRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
+import com.cablepulse.security.WorkspaceAuthorizationService;
+import com.cablepulse.util.PiiMaskingUtil;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,7 @@ public class CustomerService {
     private final EmployeeRepository employeeRepository;
     private final PaymentProcessingService paymentProcessingService;
     private final CustomerBalanceService customerBalanceService;
+    private final WorkspaceAuthorizationService workspaceAuthorizationService;
 
     public CustomerService(
             CustomerRepository customerRepository,
@@ -29,17 +32,20 @@ public class CustomerService {
             GlobalPlanRepository globalPlanRepository,
             EmployeeRepository employeeRepository,
             PaymentProcessingService paymentProcessingService,
-            CustomerBalanceService customerBalanceService) {
+            CustomerBalanceService customerBalanceService,
+            WorkspaceAuthorizationService workspaceAuthorizationService) {
         this.customerRepository = customerRepository;
         this.customerLedgerRepository = customerLedgerRepository;
         this.globalPlanRepository = globalPlanRepository;
         this.employeeRepository = employeeRepository;
         this.paymentProcessingService = paymentProcessingService;
         this.customerBalanceService = customerBalanceService;
+        this.workspaceAuthorizationService = workspaceAuthorizationService;
     }
 
     @Transactional(readOnly = true)
     public CustomerProfileDTO getCustomerProfile(String customerId) {
+        workspaceAuthorizationService.assertCustomerAccess(customerId);
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new EntityNotFoundException("Customer not found: " + customerId));
         return toProfileDto(customer);
@@ -47,6 +53,7 @@ public class CustomerService {
 
     @Transactional
     public void softDeleteCustomer(String customerId) {
+        workspaceAuthorizationService.assertCustomerAccess(customerId);
         Customer customer = customerRepository.findById(customerId.trim())
                 .orElseThrow(() -> new EntityNotFoundException("Customer not found: " + customerId));
         customer.setDeleted(true);
@@ -55,6 +62,7 @@ public class CustomerService {
 
     @Transactional
     public void collectPayment(String customerId, CollectPaymentRequestDto request, String agentEmployeeId) {
+        workspaceAuthorizationService.assertCustomerAccess(customerId);
         Employee fieldAgent = resolveFieldAgent(agentEmployeeId);
         int year = request.year() != null ? request.year() : java.time.LocalDate.now().getYear();
         List<String> months = request.resolvedMonths();
@@ -82,6 +90,7 @@ public class CustomerService {
 
     @Transactional
     public CustomerProfileDTO updateSubscription(String customerId, UpdateSubscriptionRequestDto request) {
+        workspaceAuthorizationService.assertCustomerAccess(customerId);
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new EntityNotFoundException("Customer not found: " + customerId));
 
@@ -146,6 +155,11 @@ public class CustomerService {
 
         String paymentStatus = CustomerBalanceService.paymentStatusFromBalance(balanceDue);
 
+        String mobileNumber = customer.getMobileNumber();
+        if (!workspaceAuthorizationService.canViewSensitiveCustomerFields()) {
+            mobileNumber = PiiMaskingUtil.maskPhone(mobileNumber);
+        }
+
         return new CustomerProfileDTO(
                 customer.getCustomerId(),
                 customer.getFullName(),
@@ -157,7 +171,7 @@ public class CustomerService {
                 monthlyRate,
                 paymentStatus,
                 balanceDue,
-                customer.getMobileNumber()
+                mobileNumber
         );
     }
 }

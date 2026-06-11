@@ -1,7 +1,9 @@
 package com.cablepulse.controller;
 
 import com.cablepulse.dto.DtoClasses.*;
+import com.cablepulse.security.SecurityAuth;
 import com.cablepulse.service.DashboardService;
+import com.cablepulse.util.EtagSupport;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,17 +22,20 @@ public class DashboardController {
 
     @GetMapping("/metrics")
     public ResponseEntity<StandardResponse_DashboardData> getDashboardMetrics(
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
             @RequestHeader("X-E2E-ID") UUID e2eId,
             @RequestHeader("X-Session-ID") UUID sessionId) {
 
-        DashboardData dashboardData = dashboardService.getDashboardMetrics(true);
-        StandardResponse_DashboardData response = new StandardResponse_DashboardData(
-                LocalDateTime.now(),
-                "SUCCESS",
-                null,
-                dashboardData
-        );
+        DashboardData dashboardData = dashboardService.getDashboardMetrics(SecurityAuth.isOwner());
 
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, dashboardData, () -> {
+            StandardResponse_DashboardData response = new StandardResponse_DashboardData(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    dashboardData
+            );
+            return ResponseEntity.ok(response);
+        });
     }
 }

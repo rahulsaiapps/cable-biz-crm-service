@@ -5,9 +5,11 @@ import com.cablepulse.model.DailyExpense;
 import com.cablepulse.model.IspSettlement;
 import com.cablepulse.service.DailyLedgerService;
 import com.cablepulse.service.SyncService;
+import com.cablepulse.util.EtagSupport;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -38,23 +40,27 @@ public class TransactionController {
     }
 
     @PostMapping("/api/v1/transactions/expense")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_ExpenseCreated> logExpense(@RequestBody DailyExpense expense) {
         StandardResponse_ExpenseCreated response = dailyLedgerService.saveExpense(expense);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PostMapping("/api/v1/transactions/isp-settlement")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_SettlementCreated> logIspSettlement(@RequestBody IspSettlement settlement) {
         StandardResponse_SettlementCreated response = dailyLedgerService.saveIspSettlement(settlement);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping("/api/v1/transactions/daily-summary")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_DailyCashSummaryData> getDailySummary(
-            @RequestParam("targetDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate targetDate) {
+            @RequestParam("targetDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate targetDate,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
 
         StandardResponse_DailyCashSummaryData response = dailyLedgerService.getDailySummary(targetDate);
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, response.data(), () -> ResponseEntity.ok(response));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

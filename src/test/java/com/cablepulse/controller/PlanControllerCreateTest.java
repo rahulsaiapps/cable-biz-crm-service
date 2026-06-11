@@ -6,6 +6,7 @@ import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.DailyTransactionRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
+import com.cablepulse.testsupport.TestDatabaseCleaner;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,6 +51,9 @@ class PlanControllerCreateTest {
     @Autowired
     private DailyTransactionRepository dailyTransactionRepository;
 
+    @Autowired
+    private TestDatabaseCleaner testDatabaseCleaner;
+
     @MockBean
     private FirebaseAuth firebaseAuth;
 
@@ -60,11 +64,7 @@ class PlanControllerCreateTest {
     void setUp() throws Exception {
         e2eId = UUID.randomUUID().toString();
         sessionId = UUID.randomUUID().toString();
-        customerLedgerRepository.deleteAll();
-        dailyTransactionRepository.deleteAll();
-        customerRepository.deleteAll();
-        globalPlanRepository.deleteAll();
-        connectionProviderRepository.deleteAll();
+        testDatabaseCleaner.wipeCoreWorkspaceData();
         connectionProviderRepository.save(new ConnectionProvider("Skynet Cable Networks"));
 
         FirebaseToken firebaseToken = mock(FirebaseToken.class);

@@ -10,15 +10,18 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
 
+@Component
 public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private static final Logger logger = LoggerFactory.getLogger(FirebaseAuthenticationFilter.class);
@@ -26,14 +29,17 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
     private final FirebaseAuth firebaseAuth;
     private final EmployeeRoleResolver employeeRoleResolver;
     private final JwtTokenService jwtTokenService;
+    private final boolean allowFirebaseBearer;
 
     public FirebaseAuthenticationFilter(
             FirebaseAuth firebaseAuth,
             EmployeeRoleResolver employeeRoleResolver,
-            JwtTokenService jwtTokenService) {
+            JwtTokenService jwtTokenService,
+            @Value("${cablepulse.security.allow-firebase-bearer:false}") boolean allowFirebaseBearer) {
         this.firebaseAuth = firebaseAuth;
         this.employeeRoleResolver = employeeRoleResolver;
         this.jwtTokenService = jwtTokenService;
+        this.allowFirebaseBearer = allowFirebaseBearer;
     }
 
     @Override
@@ -46,7 +52,11 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String bearerToken = authHeader.substring(7);
-            if (!authenticateBackendJwt(request, bearerToken) && !authenticateFirebaseToken(request, bearerToken)) {
+            boolean authenticated = authenticateBackendJwt(request, bearerToken);
+            if (!authenticated && allowFirebaseBearer) {
+                authenticated = authenticateFirebaseToken(request, bearerToken);
+            }
+            if (!authenticated) {
                 SecurityContextHolder.clearContext();
             }
         }
@@ -84,7 +94,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             setAuthentication(request, uid, bearerToken, authorities);
             return true;
         } catch (Exception e) {
-            logger.debug("Firebase token verification failed: {}", e.getMessage());
+            logger.debug("Firebase token verification failed");
             return false;
         }
     }

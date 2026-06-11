@@ -8,6 +8,7 @@ import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.DailyTransactionRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.testsupport.TestDatabaseCleaner;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,6 +55,9 @@ class CustomerProfileControllerTest {
     @Autowired
     private DailyTransactionRepository dailyTransactionRepository;
 
+    @Autowired
+    private TestDatabaseCleaner testDatabaseCleaner;
+
     @MockBean
     private FirebaseAuth firebaseAuth;
 
@@ -66,11 +70,7 @@ class CustomerProfileControllerTest {
     void setUp() throws Exception {
         e2eId = UUID.randomUUID().toString();
         sessionId = UUID.randomUUID().toString();
-        customerLedgerRepository.deleteAll();
-        dailyTransactionRepository.deleteAll();
-        customerRepository.deleteAll();
-        globalPlanRepository.deleteAll();
-        territoryRepository.deleteAll();
+        testDatabaseCleaner.wipeCoreWorkspaceData();
 
         territoryId = "ter_" + UUID.randomUUID().toString().replace("-", "");
         territoryRepository.save(new Territory(territoryId, "Kolamuru"));

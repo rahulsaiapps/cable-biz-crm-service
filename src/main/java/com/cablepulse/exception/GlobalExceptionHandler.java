@@ -7,6 +7,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -27,10 +28,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleMessageNotReadable(HttpMessageNotReadableException ex) {
+        logger.debug("Malformed request body", ex);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", LocalDateTime.now());
         body.put("status", "ERROR");
-        body.put("error", "Malformed JSON input or invalid field value: " + ex.getMessage());
+        body.put("error", "Malformed JSON input or invalid field value");
         body.put("data", null);
         return ResponseEntity.badRequest().body(body);
     }
@@ -40,9 +42,19 @@ public class GlobalExceptionHandler {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", LocalDateTime.now());
         body.put("status", "ERROR");
-        body.put("error", String.format("Failed to convert parameter '%s': %s", ex.getName(), ex.getMessage()));
+        body.put("error", String.format("Invalid value for parameter '%s'", ex.getName()));
         body.put("data", null);
         return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", "ERROR");
+        body.put("error", "Access denied");
+        body.put("data", null);
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
@@ -81,7 +93,7 @@ public class GlobalExceptionHandler {
         if (message.contains("violates foreign key constraint")) {
             return "Customer could not be saved because linked territory or plan data is invalid.";
         }
-        return message;
+        return "The request could not be completed due to a data conflict.";
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -120,6 +132,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({DataAccessException.class, NullPointerException.class, RuntimeException.class, Exception.class})
     public ResponseEntity<Map<String, Object>> handleInternalError(Exception ex) {
+        if (!(ex instanceof AccessDeniedException)) {
+            logger.error("Unhandled exception", ex);
+        }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", LocalDateTime.now());
         body.put("status", "ERROR");

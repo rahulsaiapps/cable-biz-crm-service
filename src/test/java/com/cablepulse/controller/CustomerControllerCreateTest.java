@@ -1,10 +1,14 @@
 package com.cablepulse.controller;
 
+import com.cablepulse.model.Employee;
+import com.cablepulse.model.EmployeeRole;
 import com.cablepulse.model.Territory;
 import com.cablepulse.model.Customer;
 import com.cablepulse.repository.ConnectionProviderRepository;
 import com.cablepulse.repository.CustomerRepository;
+import com.cablepulse.repository.EmployeeRepository;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.testsupport.TestDatabaseCleaner;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +46,12 @@ class CustomerControllerCreateTest {
     @Autowired
     private ConnectionProviderRepository connectionProviderRepository;
 
+    @Autowired
+    private EmployeeRepository employeeRepository;
+
+    @Autowired
+    private TestDatabaseCleaner testDatabaseCleaner;
+
     @MockBean
     private FirebaseAuth firebaseAuth;
 
@@ -53,9 +63,7 @@ class CustomerControllerCreateTest {
     void setUp() throws Exception {
         e2eId = UUID.randomUUID().toString();
         sessionId = UUID.randomUUID().toString();
-        customerRepository.deleteAll();
-        territoryRepository.deleteAll();
-        connectionProviderRepository.deleteAll();
+        testDatabaseCleaner.wipeCoreWorkspaceData();
 
         territoryId = "ter_" + UUID.randomUUID().toString().replace("-", "");
         territoryRepository.save(new Territory(territoryId, "Kolamuru"));
@@ -116,6 +124,10 @@ class CustomerControllerCreateTest {
         when(collectionBoyToken.getUid()).thenReturn("collection-boy-uid");
         when(collectionBoyToken.getClaims()).thenReturn(Map.of("role", "COLLECTION_BOY"));
         when(firebaseAuth.verifyIdToken(anyString())).thenReturn(collectionBoyToken);
+
+        Employee collectionBoy = new Employee("collection-boy-uid", "Field Agent", EmployeeRole.COLLECTION_BOY);
+        collectionBoy.setAssignedVillages(java.util.List.of("Kolamuru"));
+        employeeRepository.save(collectionBoy);
 
         mockMvc.perform(post("/api/v1/customers")
                         .header("Authorization", "Bearer test-token")

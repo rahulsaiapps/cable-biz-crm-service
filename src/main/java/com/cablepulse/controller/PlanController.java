@@ -4,10 +4,12 @@ import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.model.GlobalPlan;
 import com.cablepulse.repository.GlobalPlanRepository;
 import com.cablepulse.service.PlanService;
+import com.cablepulse.util.EtagSupport;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -28,7 +30,8 @@ public class PlanController {
 
     @GetMapping
     public ResponseEntity<StandardResponse_PlansData> getPlansByProvider(
-            @RequestParam(value = "providerName", required = false) String providerName) {
+            @RequestParam(value = "providerName", required = false) String providerName,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
 
         List<GlobalPlan> plans = (providerName == null || providerName.isBlank())
                 ? globalPlanRepository.findAllWithProvider()
@@ -38,17 +41,19 @@ public class PlanController {
                 .map(PlanController::toPlanItemDto)
                 .collect(Collectors.toList());
 
-        StandardResponse_PlansData response = new StandardResponse_PlansData(
-                LocalDateTime.now(),
-                "SUCCESS",
-                null,
-                dtos
-        );
-
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, dtos, () -> {
+            StandardResponse_PlansData response = new StandardResponse_PlansData(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    dtos
+            );
+            return ResponseEntity.ok(response);
+        });
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_PlanCreated> createPlan(
             @Valid @RequestBody CreatePlanRequestDto requestDto) {
         GlobalPlan saved = planService.createPlan(requestDto);
@@ -64,6 +69,7 @@ public class PlanController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_Void> deletePlan(@PathVariable("id") String id) {
         planService.deletePlan(id);
 

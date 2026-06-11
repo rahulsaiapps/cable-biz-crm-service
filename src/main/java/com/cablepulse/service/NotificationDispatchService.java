@@ -1,5 +1,6 @@
 package com.cablepulse.service;
 
+import com.cablepulse.util.PiiMaskingUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -31,25 +32,36 @@ public class NotificationDispatchService {
 
     public String createOutageBulletin(String title, String body, String territoryId) {
         String trackingId = "bulletin-" + UUID.randomUUID();
-        logger.info("Outage bulletin queued: trackingId={}, territoryId={}, title={}", trackingId, territoryId, title);
+        logger.info(
+                "Outage bulletin queued: trackingId={}, territoryId={}",
+                trackingId,
+                PiiMaskingUtil.redactIdentifier(territoryId));
         return trackingId;
     }
 
     public String broadcastOutage(String title, String body, String territoryId) {
         String trackingId = "ntf-outage-" + UUID.randomUUID();
-        logger.info("Outage notification queued: trackingId={}, territoryId={}, title={}", trackingId, territoryId, title);
+        logger.info(
+                "Outage notification queued: trackingId={}, territoryId={}",
+                trackingId,
+                PiiMaskingUtil.redactIdentifier(territoryId));
         return trackingId;
     }
 
     public String dispatchCustomerAlert(String customerId, List<Integer> months, String message) {
         String trackingId = "ntf-dispatch-" + UUID.randomUUID();
-        logger.info("Customer alert queued: trackingId={}, customerId={}, months={}", trackingId, customerId, months);
+        logger.info(
+                "Customer alert queued: trackingId={}, customerRef={}, monthCount={}",
+                trackingId,
+                PiiMaskingUtil.redactIdentifier(customerId),
+                months != null ? months.size() : 0);
         return trackingId;
     }
 
     public String dispatchGenericAlert(Map<String, Object> payload) {
         String trackingId = "ntf-generic-" + UUID.randomUUID();
-        logger.info("Generic alert queued: trackingId={}, payload={}", trackingId, payload);
+        logger.info("Generic alert queued: trackingId={}, payloadKeyCount={}", trackingId,
+                payload != null ? payload.size() : 0);
         return trackingId;
     }
 }

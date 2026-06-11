@@ -3,9 +3,11 @@ package com.cablepulse.controller;
 import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.service.DailyLedgerService;
 import com.cablepulse.service.FinanceAnalyticsService;
+import com.cablepulse.util.EtagSupport;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,6 +20,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/finance")
+@PreAuthorize("hasRole('OWNER')")
 public class FinanceController {
 
     private final DailyLedgerService dailyLedgerService;
@@ -31,11 +34,12 @@ public class FinanceController {
     @GetMapping("/daily-ledger")
     public ResponseEntity<StandardResponse_DailyLedgerBook> getDailyLedger(
             @RequestParam("targetDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate targetDate,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
             @RequestHeader("X-E2E-ID") UUID e2eId,
             @RequestHeader("X-Session-ID") UUID sessionId) {
 
         StandardResponse_DailyLedgerBook response = dailyLedgerService.getDailyLedgerBook(targetDate);
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, response.data(), () -> ResponseEntity.ok(response));
     }
 
     @PostMapping("/daily-ledger/transactions")
@@ -58,28 +62,38 @@ public class FinanceController {
 
     @GetMapping("/metrics")
     public ResponseEntity<FinanceMetricsDTO> getFinanceMetrics(
-            @RequestParam(value = "interval", defaultValue = "6M") String interval) {
-        return ResponseEntity.ok(financeAnalyticsService.getMetrics(interval));
+            @RequestParam(value = "interval", defaultValue = "6M") String interval,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        FinanceMetricsDTO metrics = financeAnalyticsService.getMetrics(interval);
+        return EtagSupport.respondWithEtag(ifNoneMatch, metrics, () -> ResponseEntity.ok(metrics));
     }
 
     @GetMapping("/expenses")
-    public ResponseEntity<List<ExpenseDistributionItemDTO>> getExpenseDistribution() {
-        return ResponseEntity.ok(financeAnalyticsService.getExpenseDistribution());
+    public ResponseEntity<List<ExpenseDistributionItemDTO>> getExpenseDistribution(
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        List<ExpenseDistributionItemDTO> items = financeAnalyticsService.getExpenseDistribution();
+        return EtagSupport.respondWithEtag(ifNoneMatch, items, () -> ResponseEntity.ok(items));
     }
 
     @GetMapping("/performance")
-    public ResponseEntity<List<MonthlyPerformanceDTO>> getMonthlyPerformance() {
-        return ResponseEntity.ok(financeAnalyticsService.getMonthlyPerformance());
+    public ResponseEntity<List<MonthlyPerformanceDTO>> getMonthlyPerformance(
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        List<MonthlyPerformanceDTO> items = financeAnalyticsService.getMonthlyPerformance();
+        return EtagSupport.respondWithEtag(ifNoneMatch, items, () -> ResponseEntity.ok(items));
     }
 
     @GetMapping("/disbursements")
-    public ResponseEntity<List<DisbursementDTO>> getDisbursements() {
-        return ResponseEntity.ok(financeAnalyticsService.getRecentDisbursements());
+    public ResponseEntity<List<DisbursementDTO>> getDisbursements(
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        List<DisbursementDTO> items = financeAnalyticsService.getRecentDisbursements();
+        return EtagSupport.respondWithEtag(ifNoneMatch, items, () -> ResponseEntity.ok(items));
     }
 
     @GetMapping("/health")
-    public ResponseEntity<FinanceHealthDTO> getFinanceHealth() {
-        return ResponseEntity.ok(financeAnalyticsService.getSystemHealth());
+    public ResponseEntity<FinanceHealthDTO> getFinanceHealth(
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        FinanceHealthDTO health = financeAnalyticsService.getSystemHealth();
+        return EtagSupport.respondWithEtag(ifNoneMatch, health, () -> ResponseEntity.ok(health));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

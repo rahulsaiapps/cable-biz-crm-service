@@ -1,6 +1,5 @@
 package com.cablepulse.security;
 
-import com.google.firebase.auth.FirebaseAuth;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -15,17 +14,14 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    private final FirebaseAuth firebaseAuth;
-    private final EmployeeRoleResolver employeeRoleResolver;
-    private final JwtTokenService jwtTokenService;
+    private final AuthRateLimitFilter authRateLimitFilter;
+    private final FirebaseAuthenticationFilter firebaseAuthenticationFilter;
 
     public SecurityConfig(
-            FirebaseAuth firebaseAuth,
-            EmployeeRoleResolver employeeRoleResolver,
-            JwtTokenService jwtTokenService) {
-        this.firebaseAuth = firebaseAuth;
-        this.employeeRoleResolver = employeeRoleResolver;
-        this.jwtTokenService = jwtTokenService;
+            AuthRateLimitFilter authRateLimitFilter,
+            FirebaseAuthenticationFilter firebaseAuthenticationFilter) {
+        this.authRateLimitFilter = authRateLimitFilter;
+        this.firebaseAuthenticationFilter = firebaseAuthenticationFilter;
     }
 
     @Bean
@@ -37,9 +33,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(
-                    new FirebaseAuthenticationFilter(firebaseAuth, employeeRoleResolver, jwtTokenService),
-                    UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(authRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(firebaseAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

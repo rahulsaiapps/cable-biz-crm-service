@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.TestPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -15,6 +16,7 @@ import static org.mockito.Mockito.when;
 
 @DataJpaTest
 @Import(EmployeeReconciliationService.class)
+@TestPropertySource(properties = "cablepulse.security.bootstrap-owner-emails=rahul@example.com")
 class EmployeeReconciliationServiceTest {
 
     @Autowired
@@ -77,5 +79,18 @@ class EmployeeReconciliationServiceTest {
         assertThat(resolved.getEmployeeId()).isEqualTo("operator-firebase-uid");
         assertThat(resolved.getRole()).isEqualTo(EmployeeRole.OWNER);
         assertThat(resolved.getEmail()).isEqualTo("rahul@example.com");
+    }
+
+    @Test
+    void resolveEmployee_doesNotBootstrapOwnerWhenEmailNotAllowlisted() {
+        FirebaseToken token = mock(FirebaseToken.class);
+        when(token.getUid()).thenReturn("operator-firebase-uid");
+        when(token.getName()).thenReturn("Rahul Sai");
+        when(token.getEmail()).thenReturn("not-allowed@example.com");
+
+        Employee resolved = reconciliationService.resolveEmployee(token);
+
+        assertThat(resolved).isNull();
+        assertThat(employeeRepository.findById("operator-firebase-uid")).isEmpty();
     }
 }

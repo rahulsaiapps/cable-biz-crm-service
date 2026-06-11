@@ -13,8 +13,11 @@ import com.cablepulse.repository.TerritoryRepository;
 import com.cablepulse.service.CustomerBalanceService;
 import com.cablepulse.service.TerritoryService;
 import com.cablepulse.service.WorkspaceProviderService;
+import com.cablepulse.security.WorkspaceAuthorizationService;
+import com.cablepulse.util.EtagSupport;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
@@ -23,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -36,6 +40,7 @@ public class WorkspaceController {
     private final WorkspaceProviderService workspaceProviderService;
     private final CustomerBalanceService customerBalanceService;
     private final TerritoryService territoryService;
+    private final WorkspaceAuthorizationService workspaceAuthorizationService;
 
     public WorkspaceController(
             CustomerRepository customerRepository,
@@ -43,35 +48,44 @@ public class WorkspaceController {
             ConnectionProviderRepository connectionProviderRepository,
             WorkspaceProviderService workspaceProviderService,
             CustomerBalanceService customerBalanceService,
-            TerritoryService territoryService) {
+            TerritoryService territoryService,
+            WorkspaceAuthorizationService workspaceAuthorizationService) {
         this.customerRepository = customerRepository;
         this.territoryRepository = territoryRepository;
         this.connectionProviderRepository = connectionProviderRepository;
         this.workspaceProviderService = workspaceProviderService;
         this.customerBalanceService = customerBalanceService;
         this.territoryService = territoryService;
+        this.workspaceAuthorizationService = workspaceAuthorizationService;
     }
 
     @GetMapping("/territories")
-    public ResponseEntity<StandardResponse_Territories> listTerritories() {
-        List<TerritorySummaryDTO> summaries = territoryRepository.findAll().stream()
+    public ResponseEntity<StandardResponse_Territories> listTerritories(
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        List<TerritorySummaryDTO> summaries = workspaceAuthorizationService
+                .filterAccessibleTerritories(territoryRepository.findAll()).stream()
                 .map(this::toTerritorySummary)
                 .collect(Collectors.toList());
 
-        StandardResponse_Territories response = new StandardResponse_Territories(
-                LocalDateTime.now(),
-                "SUCCESS",
-                null,
-                summaries
-        );
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, summaries, () -> {
+            StandardResponse_Territories response = new StandardResponse_Territories(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    summaries
+            );
+            return ResponseEntity.ok(response);
+        });
     }
 
     @GetMapping("/territories/{id}/blocks")
     public ResponseEntity<StandardResponse_BlockNames> getTerritoryBlocks(
             @PathVariable("id") String id,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
             @RequestHeader("X-E2E-ID") UUID e2eId,
             @RequestHeader("X-Session-ID") UUID sessionId) {
+
+        workspaceAuthorizationService.assertTerritoryAccess(id);
 
         Territory territory = territoryRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Territory not found: " + id));
@@ -80,34 +94,49 @@ public class WorkspaceController {
                 .map(block -> block.getBlockName())
                 .collect(Collectors.toList());
 
-        StandardResponse_BlockNames response = new StandardResponse_BlockNames(
-                LocalDateTime.now(),
-                "SUCCESS",
-                null,
-                blockNames
-        );
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, blockNames, () -> {
+            StandardResponse_BlockNames response = new StandardResponse_BlockNames(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    blockNames
+            );
+            return ResponseEntity.ok(response);
+        });
     }
 
     @GetMapping("/territories/active-locations")
-    public ResponseEntity<StandardResponse_LocationNames> getActiveTerritoryLocationNames() {
-        List<String> locationNames = territoryRepository.findDistinctActiveLocationNames();
+    public ResponseEntity<StandardResponse_LocationNames> getActiveTerritoryLocationNames(
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        Set<String> allowedLocationNames = workspaceAuthorizationService
+                .filterAccessibleTerritories(territoryRepository.findAll()).stream()
+                .map(Territory::getLocationName)
+                .filter(name -> name != null && !name.isBlank())
+                .collect(Collectors.toSet());
 
-        StandardResponse_LocationNames response = new StandardResponse_LocationNames(
-                LocalDateTime.now(),
-                "SUCCESS",
-                null,
-                locationNames
-        );
+        List<String> locationNames = territoryRepository.findDistinctActiveLocationNames().stream()
+                .filter(allowedLocationNames::contains)
+                .collect(Collectors.toList());
 
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, locationNames, () -> {
+            StandardResponse_LocationNames response = new StandardResponse_LocationNames(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    locationNames
+            );
+            return ResponseEntity.ok(response);
+        });
     }
 
     @GetMapping("/customers")
     public ResponseEntity<StandardResponse_WorkspaceData> getWorkspaceCustomers(
             @RequestParam("locationId") String locationId,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
             @RequestHeader("X-E2E-ID") UUID e2eId,
             @RequestHeader("X-Session-ID") UUID sessionId) {
+
+        workspaceAuthorizationService.assertTerritoryAccess(locationId);
 
         String locationName = territoryRepository.findById(locationId)
                 .map(t -> t.getLocationName())
@@ -141,17 +170,20 @@ public class WorkspaceController {
         }).collect(Collectors.toList());
 
         WorkspaceData data = new WorkspaceData(locationId, locationName, dtos);
-        StandardResponse_WorkspaceData response = new StandardResponse_WorkspaceData(
-                LocalDateTime.now(),
-                "SUCCESS",
-                null,
-                data
-        );
 
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, data, () -> {
+            StandardResponse_WorkspaceData response = new StandardResponse_WorkspaceData(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    data
+            );
+            return ResponseEntity.ok(response);
+        });
     }
 
     @DeleteMapping("/territories/{id}")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_Void> deleteTerritory(
             @PathVariable("id") String id,
             @RequestHeader("X-E2E-ID") UUID e2eId,
@@ -183,18 +215,26 @@ public class WorkspaceController {
     }
 
     @GetMapping("/providers")
-    public ResponseEntity<StandardResponse_Providers> getProviders() {
+    public ResponseEntity<StandardResponse_Providers> getProviders(
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
         List<ConnectionProvider> providers = connectionProviderRepository.findAll();
-        StandardResponse_Providers response = new StandardResponse_Providers(
-                LocalDateTime.now(),
-                "SUCCESS",
-                null,
-                providers
-        );
-        return ResponseEntity.ok(response);
+        List<ProviderSummaryDTO> etagSource = providers.stream()
+                .map(p -> new ProviderSummaryDTO(p.getId(), p.getName()))
+                .collect(Collectors.toList());
+
+        return EtagSupport.respondWithEtag(ifNoneMatch, etagSource, () -> {
+            StandardResponse_Providers response = new StandardResponse_Providers(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    providers
+            );
+            return ResponseEntity.ok(response);
+        });
     }
 
     @PostMapping("/providers")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<?> createProvider(@Valid @RequestBody ProviderRequestDto requestDto) {
         Object saved = workspaceProviderService.createWorkspaceProvider(requestDto);
 
@@ -283,4 +323,6 @@ public class WorkspaceController {
         String error,
         List<String> data
     ) {}
+
+    public record ProviderSummaryDTO(Long id, String name) {}
 }

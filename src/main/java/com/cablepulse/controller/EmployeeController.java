@@ -4,16 +4,18 @@ import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.exception.EmployeeNotFoundException;
 import com.cablepulse.model.Employee;
 import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.service.EmployeeManagementService;
 import com.cablepulse.service.EmployeeProfileService;
+import com.cablepulse.util.EtagSupport;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
@@ -22,47 +24,40 @@ public class EmployeeController {
 
     private final EmployeeRepository employeeRepository;
     private final EmployeeProfileService employeeProfileService;
+    private final EmployeeManagementService employeeManagementService;
 
     public EmployeeController(
             EmployeeRepository employeeRepository,
-            EmployeeProfileService employeeProfileService) {
+            EmployeeProfileService employeeProfileService,
+            EmployeeManagementService employeeManagementService) {
         this.employeeRepository = employeeRepository;
         this.employeeProfileService = employeeProfileService;
+        this.employeeManagementService = employeeManagementService;
     }
 
     @GetMapping
-    public ResponseEntity<StandardResponse_EmployeeList> listEmployees() {
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<StandardResponse_EmployeeList> listEmployees(
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
         List<EmployeeDTO> employees = employeeRepository.findAll().stream()
                 .map(EmployeeDTO::fromEntity)
                 .collect(Collectors.toList());
 
-        StandardResponse_EmployeeList response = new StandardResponse_EmployeeList(
-                LocalDateTime.now(),
-                "SUCCESS",
-                null,
-                employees
-        );
-
-        return ResponseEntity.ok(response);
+        return EtagSupport.respondWithEtag(ifNoneMatch, employees, () -> {
+            StandardResponse_EmployeeList response = new StandardResponse_EmployeeList(
+                    LocalDateTime.now(),
+                    "SUCCESS",
+                    null,
+                    employees
+            );
+            return ResponseEntity.ok(response);
+        });
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_EmployeeData> createEmployee(@Valid @RequestBody CreateEmployeeRequestDto requestDto) {
-        String pendingEmployeeId = "PENDING-" + UUID.randomUUID();
-
-        Employee employee = new Employee(pendingEmployeeId, requestDto.fullName(), requestDto.role());
-        if (requestDto.email() != null && !requestDto.email().isBlank()) {
-            employee.setEmail(requestDto.email().trim());
-        }
-        if (requestDto.assignedVillages() != null && !requestDto.assignedVillages().isEmpty()) {
-            employee.setAssignedVillages(
-                    requestDto.assignedVillages().stream()
-                            .map(String::trim)
-                            .filter(s -> !s.isEmpty())
-                            .toList()
-            );
-        }
-        Employee saved = employeeRepository.save(employee);
+        Employee saved = employeeManagementService.createEmployee(requestDto);
 
         StandardResponse_EmployeeData response = new StandardResponse_EmployeeData(
                 LocalDateTime.now(),

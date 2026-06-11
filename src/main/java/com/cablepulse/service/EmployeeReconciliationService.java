@@ -6,10 +6,15 @@ import com.cablepulse.repository.EmployeeRepository;
 import com.google.firebase.auth.FirebaseToken;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class EmployeeReconciliationService {
@@ -19,9 +24,13 @@ public class EmployeeReconciliationService {
     static final String PENDING_ID_PREFIX = "PENDING-";
 
     private final EmployeeRepository employeeRepository;
+    private final Set<String> bootstrapOwnerEmails;
 
-    public EmployeeReconciliationService(EmployeeRepository employeeRepository) {
+    public EmployeeReconciliationService(
+            EmployeeRepository employeeRepository,
+            @Value("${cablepulse.security.bootstrap-owner-emails:}") String bootstrapOwnerEmails) {
         this.employeeRepository = employeeRepository;
+        this.bootstrapOwnerEmails = parseEmailAllowlist(bootstrapOwnerEmails);
     }
 
     /**
@@ -58,6 +67,17 @@ public class EmployeeReconciliationService {
         boolean ownerExists = employeeRepository.findAll().stream()
                 .anyMatch(employee -> employee.getRole() == EmployeeRole.OWNER);
         if (ownerExists) {
+            return Optional.empty();
+        }
+
+        String email = decodedToken.getEmail();
+        if (email == null || email.isBlank()) {
+            return Optional.empty();
+        }
+        if (!isBootstrapOwnerEmailAllowed(email)) {
+            logger.warn(
+                    "Skipping owner bootstrap for uid={}: email not in bootstrap allowlist",
+                    decodedToken.getUid());
             return Optional.empty();
         }
 
@@ -100,5 +120,23 @@ public class EmployeeReconciliationService {
         employeeRepository.flush();
 
         return employeeRepository.save(claimed);
+    }
+
+    private boolean isBootstrapOwnerEmailAllowed(String email) {
+        if (bootstrapOwnerEmails.isEmpty()) {
+            return false;
+        }
+        return bootstrapOwnerEmails.contains(email.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private static Set<String> parseEmailAllowlist(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Set.of();
+        }
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> s.toLowerCase(Locale.ROOT))
+                .collect(Collectors.toSet());
     }
 }
