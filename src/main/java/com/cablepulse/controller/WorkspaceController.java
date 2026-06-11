@@ -10,11 +10,14 @@ import com.cablepulse.model.Territory;
 import com.cablepulse.repository.ConnectionProviderRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.service.AuditLogService;
 import com.cablepulse.service.CustomerBalanceService;
 import com.cablepulse.service.TerritoryService;
 import com.cablepulse.service.WorkspaceProviderService;
 import com.cablepulse.security.WorkspaceAuthorizationService;
 import com.cablepulse.util.EtagSupport;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -41,6 +44,8 @@ public class WorkspaceController {
     private final CustomerBalanceService customerBalanceService;
     private final TerritoryService territoryService;
     private final WorkspaceAuthorizationService workspaceAuthorizationService;
+    private final AuditLogService auditLogService;
+    private final ObjectMapper objectMapper;
 
     public WorkspaceController(
             CustomerRepository customerRepository,
@@ -49,7 +54,9 @@ public class WorkspaceController {
             WorkspaceProviderService workspaceProviderService,
             CustomerBalanceService customerBalanceService,
             TerritoryService territoryService,
-            WorkspaceAuthorizationService workspaceAuthorizationService) {
+            WorkspaceAuthorizationService workspaceAuthorizationService,
+            AuditLogService auditLogService,
+            ObjectMapper objectMapper) {
         this.customerRepository = customerRepository;
         this.territoryRepository = territoryRepository;
         this.connectionProviderRepository = connectionProviderRepository;
@@ -57,6 +64,8 @@ public class WorkspaceController {
         this.customerBalanceService = customerBalanceService;
         this.territoryService = territoryService;
         this.workspaceAuthorizationService = workspaceAuthorizationService;
+        this.auditLogService = auditLogService;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping("/territories")
@@ -194,6 +203,15 @@ public class WorkspaceController {
 
         territoryService.softDeleteTerritory(territory.getTerritoryId());
 
+        auditLogService.log(
+                AuditLogService.DELETE_TERRITORY,
+                id,
+                toAuditDetails(Map.of(
+                        "locationName", territory.getLocationName(),
+                        "district", territory.getDistrict() != null ? territory.getDistrict() : "",
+                        "state", territory.getState() != null ? territory.getState() : ""
+                )));
+
         StandardResponse_Void response = new StandardResponse_Void(
                 LocalDateTime.now(),
                 "SUCCESS",
@@ -294,6 +312,14 @@ public class WorkspaceController {
                 activeCount,
                 pendingCount
         );
+    }
+
+    private String toAuditDetails(Map<String, Object> metadata) {
+        try {
+            return objectMapper.writeValueAsString(metadata);
+        } catch (JsonProcessingException ex) {
+            return null;
+        }
     }
 
     public record StandardResponse_Providers(

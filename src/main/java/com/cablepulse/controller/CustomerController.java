@@ -6,9 +6,12 @@ import com.cablepulse.model.Customer;
 import com.cablepulse.model.CustomerLedger;
 import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
+import com.cablepulse.service.AuditLogService;
 import com.cablepulse.service.CustomerRegistrationService;
 import com.cablepulse.service.CustomerService;
 import com.cablepulse.security.WorkspaceAuthorizationService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -36,18 +39,24 @@ public class CustomerController {
     private final CustomerRegistrationService customerRegistrationService;
     private final CustomerService customerService;
     private final WorkspaceAuthorizationService workspaceAuthorizationService;
+    private final AuditLogService auditLogService;
+    private final ObjectMapper objectMapper;
 
     public CustomerController(
             CustomerRepository customerRepository,
             CustomerLedgerRepository customerLedgerRepository,
             CustomerRegistrationService customerRegistrationService,
             CustomerService customerService,
-            WorkspaceAuthorizationService workspaceAuthorizationService) {
+            WorkspaceAuthorizationService workspaceAuthorizationService,
+            AuditLogService auditLogService,
+            ObjectMapper objectMapper) {
         this.customerRepository = customerRepository;
         this.customerLedgerRepository = customerLedgerRepository;
         this.customerRegistrationService = customerRegistrationService;
         this.customerService = customerService;
         this.workspaceAuthorizationService = workspaceAuthorizationService;
+        this.auditLogService = auditLogService;
+        this.objectMapper = objectMapper;
     }
 
     @PostMapping
@@ -146,6 +155,18 @@ public class CustomerController {
                 .getContext().getAuthentication().getName();
         customerService.collectPayment(id, request, agentId);
 
+        auditLogService.log(
+                AuditLogService.RECORD_PAYMENT,
+                id,
+                toAuditDetails(Map.of(
+                        "amount", request.amount(),
+                        "monthsPaid", request.resolvedMonths(),
+                        "year", request.year() != null ? request.year() : LocalDate.now().getYear(),
+                        "paymentMode", request.paymentMode() != null ? request.paymentMode() : "CASH",
+                        "transactionRef", request.transactionRef() != null ? request.transactionRef() : "",
+                        "agentId", agentId
+                )));
+
         StandardResponse_Void response = new StandardResponse_Void(
                 LocalDateTime.now(),
                 "SUCCESS",
@@ -163,6 +184,15 @@ public class CustomerController {
             @RequestHeader("X-Session-ID") UUID sessionId) {
 
         CustomerProfileDTO profile = customerService.updateSubscription(id, request);
+
+        auditLogService.log(
+                AuditLogService.UPDATE_SUBSCRIPTION,
+                id,
+                toAuditDetails(Map.of(
+                        "planName", request.resolvedPlanName(),
+                        "planMonthlyRate", request.resolvedMonthlyRate()
+                )));
+
         StandardResponse_CustomerProfile response = new StandardResponse_CustomerProfile(
                 LocalDateTime.now(),
                 "SUCCESS",
@@ -270,5 +300,13 @@ public class CustomerController {
 
         int monthValue = (index % 12) + 1;
         return YearMonth.of(year, monthValue);
+    }
+
+    private String toAuditDetails(Map<String, Object> metadata) {
+        try {
+            return objectMapper.writeValueAsString(metadata);
+        } catch (JsonProcessingException ex) {
+            return null;
+        }
     }
 }
