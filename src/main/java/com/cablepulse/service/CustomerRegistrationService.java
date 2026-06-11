@@ -8,6 +8,7 @@ import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
 import com.cablepulse.repository.TerritoryRepository;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +16,8 @@ import java.util.UUID;
 
 @Service
 public class CustomerRegistrationService {
+
+    private static final int MAX_SERIAL_ALLOCATION_ATTEMPTS = 8;
 
     private final CustomerRepository customerRepository;
     private final TerritoryRepository territoryRepository;
@@ -35,20 +38,51 @@ public class CustomerRegistrationService {
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Territory not found: " + request.getTerritoryId()));
 
-        int serialNumber =
-                customerRepository.findMaxSerialNumberByTerritoryId(territory.getTerritoryId()) + 1;
+        GlobalPlan matchedPlan = resolvePlan(request.getPlanName());
         String customerId = "cust_" + UUID.randomUUID().toString().replace("-", "");
 
-        GlobalPlan matchedPlan = null;
-        String planName = request.getPlanName();
-        if (planName != null && !planName.isBlank()) {
-            matchedPlan = globalPlanRepository.findAll().stream()
-                    .filter(plan -> planName.equalsIgnoreCase(plan.getPlanName()))
-                    .findFirst()
-                    .orElse(null);
+        DataIntegrityViolationException lastConflict = null;
+        int baseSerial =
+                customerRepository.findMaxSerialNumberNative(territory.getTerritoryId());
+
+        for (int attempt = 0; attempt < MAX_SERIAL_ALLOCATION_ATTEMPTS; attempt++) {
+            int serialNumber = baseSerial + 1 + attempt;
+            Customer customer = buildCustomer(
+                    customerId,
+                    serialNumber,
+                    request,
+                    territory,
+                    matchedPlan);
+
+            try {
+                return customerRepository.save(customer);
+            } catch (DataIntegrityViolationException ex) {
+                lastConflict = ex;
+            }
         }
 
-        Customer customer = new Customer(
+        throw lastConflict != null
+                ? lastConflict
+                : new IllegalStateException("Unable to allocate customer serial number");
+    }
+
+    private GlobalPlan resolvePlan(String planName) {
+        if (planName == null || planName.isBlank()) {
+            return null;
+        }
+        return globalPlanRepository.findAll().stream()
+                .filter(plan -> planName.equalsIgnoreCase(plan.getPlanName()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static Customer buildCustomer(
+            String customerId,
+            int serialNumber,
+            CreateCustomerRequestDto request,
+            Territory territory,
+            GlobalPlan matchedPlan) {
+        return new Customer(
                 customerId,
                 serialNumber,
                 request.getName().trim(),
@@ -62,8 +96,6 @@ public class CustomerRegistrationService {
                 blankToNull(request.getBoxNumber()),
                 blankToNull(request.getCardNumber())
         );
-
-        return customerRepository.save(customer);
     }
 
     private static String blankToNull(String value) {

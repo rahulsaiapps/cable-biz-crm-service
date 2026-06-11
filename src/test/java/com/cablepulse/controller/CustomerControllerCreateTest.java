@@ -151,4 +151,36 @@ class CustomerControllerCreateTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.newCustomerId").exists());
     }
+
+    @Test
+    void createCustomer_secondCustomerInSameTerritory_returnsCreated() throws Exception {
+        mockMvc.perform(post("/api/v1/customers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "First Customer",
+                                  "territory_id": "%s",
+                                  "territory_name": "Kolamuru"
+                                }
+                                """.formatted(territoryId)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/customers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Second Customer Different Name",
+                                  "territory_id": "%s",
+                                  "territory_name": "Kolamuru"
+                                }
+                                """.formatted(territoryId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.newCustomerId").exists());
+    }
 }
