@@ -40,7 +40,7 @@ public class EmployeeController {
     public ResponseEntity<StandardResponse_EmployeeList> listEmployees(
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
         List<EmployeeDTO> employees = employeeRepository.findAll().stream()
-                .map(EmployeeDTO::fromEntity)
+                .map(employeeManagementService::toEmployeeDto)
                 .collect(Collectors.toList());
 
         return EtagSupport.respondWithEtag(ifNoneMatch, employees, () -> {
@@ -63,10 +63,51 @@ public class EmployeeController {
                 LocalDateTime.now(),
                 "SUCCESS",
                 null,
-                EmployeeDTO.fromEntity(saved)
+                employeeManagementService.toEmployeeDto(saved)
         );
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/{employeeId}")
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<StandardResponse_EmployeeData> getEmployee(@PathVariable String employeeId) {
+        EmployeeDTO employee = employeeManagementService.getEmployeeDetail(employeeId);
+        StandardResponse_EmployeeData response = new StandardResponse_EmployeeData(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                employee
+        );
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{employeeId}/activity")
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<StandardResponse_EmployeeActivityList> getEmployeeActivity(
+            @PathVariable String employeeId) {
+        List<EmployeeActivityEntryDTO> activity =
+                employeeManagementService.getEmployeeActivity(employeeId);
+        StandardResponse_EmployeeActivityList response = new StandardResponse_EmployeeActivityList(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                activity
+        );
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/{employeeId}")
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<StandardResponse_Void> deleteEmployee(@PathVariable String employeeId) {
+        employeeManagementService.deleteEmployee(employeeId);
+        StandardResponse_Void response = new StandardResponse_Void(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                null
+        );
+        return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/profile")

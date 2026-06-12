@@ -21,6 +21,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -90,5 +91,38 @@ class EmployeeControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.full_name").value("Satish Kumar"))
                 .andExpect(jsonPath("$.data.employee_id").value(Matchers.startsWith("PENDING-")));
+    }
+
+    @Test
+    void getEmployee_returnsDetail() throws Exception {
+        Employee employee = new Employee("emp-detail", "Detail Agent", EmployeeRole.COLLECTION_BOY);
+        employee.setEmail("detail@example.com");
+        employeeRepository.save(employee);
+
+        mockMvc.perform(get("/api/v1/employees/emp-detail")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.employee_id").value("emp-detail"))
+                .andExpect(jsonPath("$.data.full_name").value("Detail Agent"));
+    }
+
+    @Test
+    void deleteEmployee_removesCollector() throws Exception {
+        Employee employee = new Employee("emp-delete", "Delete Me", EmployeeRole.COLLECTION_BOY);
+        employeeRepository.save(employee);
+
+        mockMvc.perform(delete("/api/v1/employees/emp-delete")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/employees/emp-delete")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isNotFound());
     }
 }

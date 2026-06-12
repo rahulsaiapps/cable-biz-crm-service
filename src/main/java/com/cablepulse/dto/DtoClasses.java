@@ -296,6 +296,21 @@ public class DtoClasses {
         EmployeeDTO data
     ) {}
 
+    public record EmployeeActivityEntryDTO(
+        @JsonProperty("entry_type") String entryType,
+        String title,
+        String subtitle,
+        java.math.BigDecimal amount,
+        @JsonProperty("recorded_at") java.time.LocalDateTime recordedAt
+    ) {}
+
+    public record StandardResponse_EmployeeActivityList(
+        LocalDateTime timestamp,
+        String status,
+        String error,
+        List<EmployeeActivityEntryDTO> data
+    ) {}
+
     public record StandardResponse_LocationNames(
         LocalDateTime timestamp,
         String status,

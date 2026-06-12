@@ -15,6 +15,21 @@ public interface DailyTransactionRepository extends JpaRepository<DailyTransacti
 
     List<DailyTransaction> findByRecordedAtBetween(LocalDateTime start, LocalDateTime end);
 
+    List<DailyTransaction> findByFieldAgent_EmployeeIdAndRecordedAtBetweenOrderByRecordedAtDesc(
+            String employeeId, LocalDateTime start, LocalDateTime end);
+
+    @Query("""
+            SELECT COALESCE(SUM(t.amountCollected), 0)
+            FROM DailyTransaction t
+            WHERE t.fieldAgent.employeeId = :employeeId
+              AND t.recordedAt >= :start
+              AND t.recordedAt <= :end
+            """)
+    BigDecimal sumAmountCollectedByAgentBetween(
+            @Param("employeeId") String employeeId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
     @Query("""
             SELECT COALESCE(SUM(t.amountCollected), 0)
             FROM DailyTransaction t
