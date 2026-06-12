@@ -38,7 +38,8 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
         if (path == null || !path.startsWith(AUTH_PREFIX)) {
             return true;
         }
-        return "/api/v1/auth/health".equals(path);
+        return "/api/v1/auth/health".equals(path)
+                || "/api/v1/auth/app-version-check".equals(path);
     }
 
     @Override
