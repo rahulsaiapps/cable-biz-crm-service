@@ -29,6 +29,13 @@ public interface CustomerRepository extends JpaRepository<Customer, String> {
             """)
     long countPendingActivationOrOutstanding();
 
+    /**
+     * Customers awaiting activation (no plan/rate) or with outstanding ledger dues.
+     */
+    default long countPendingCustomers() {
+        return countPendingActivationOrOutstanding();
+    }
+
     List<Customer> findByTerritory_TerritoryId(String territoryId);
 
     List<Customer> findByTerritory_TerritoryIdAndBlockName(String territoryId, String blockName);

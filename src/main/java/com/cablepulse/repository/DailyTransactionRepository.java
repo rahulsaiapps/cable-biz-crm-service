@@ -23,4 +23,15 @@ public interface DailyTransactionRepository extends JpaRepository<DailyTransacti
     BigDecimal sumAmountCollectedBetween(
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
+
+    /**
+     * Total customer collections ({@code SUM(amount_collected)}) for a calendar month.
+     * Returns zero when no rows match — never {@code null}.
+     */
+    default BigDecimal sumAmountCollectedForCalendarMonth(java.time.YearMonth month) {
+        java.time.LocalDateTime start = month.atDay(1).atStartOfDay();
+        java.time.LocalDateTime end = month.atEndOfMonth().atTime(java.time.LocalTime.MAX);
+        BigDecimal total = sumAmountCollectedBetween(start, end);
+        return total != null ? total : BigDecimal.ZERO;
+    }
 }
