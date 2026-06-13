@@ -35,6 +35,48 @@ ALTER TABLE connection_providers
     ADD CONSTRAINT fk_connection_providers_workspace
     FOREIGN KEY (workspace_id) REFERENCES workspaces (workspace_id);
 ALTER TABLE connection_providers DROP CONSTRAINT IF EXISTS connection_providers_name_key;
+
+-- Legacy rows may differ only by casing (e.g. "Jio" vs "jio") while the old
+-- name constraint was case-sensitive. Keep the lowest id and re-point plans.
+WITH ranked AS (
+    SELECT id,
+           workspace_id,
+           LOWER(name) AS name_key,
+           ROW_NUMBER() OVER (
+               PARTITION BY workspace_id, LOWER(name)
+               ORDER BY id
+           ) AS rn
+    FROM connection_providers
+),
+dupes AS (
+    SELECT r.id AS dupe_id,
+           k.id AS keep_id
+    FROM ranked r
+    JOIN ranked k
+        ON k.workspace_id = r.workspace_id
+       AND k.name_key = r.name_key
+       AND k.rn = 1
+    WHERE r.rn > 1
+)
+UPDATE global_plans gp
+SET provider_id = d.keep_id
+FROM dupes d
+WHERE gp.provider_id = d.dupe_id;
+
+DELETE FROM connection_providers cp
+WHERE cp.id IN (
+    SELECT id
+    FROM (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                   PARTITION BY workspace_id, LOWER(name)
+                   ORDER BY id
+               ) AS rn
+        FROM connection_providers
+    ) ranked
+    WHERE rn > 1
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_connection_providers_workspace_name
     ON connection_providers (workspace_id, LOWER(name));
 
