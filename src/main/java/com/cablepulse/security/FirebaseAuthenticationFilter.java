@@ -53,7 +53,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String bearerToken = authHeader.substring(7);
             boolean authenticated = authenticateBackendJwt(request, bearerToken);
-            if (!authenticated && allowFirebaseBearer) {
+            if (!authenticated) {
                 authenticated = authenticateFirebaseToken(request, bearerToken);
             }
             if (!authenticated) {

@@ -40,10 +40,13 @@ public class EmployeeReconciliationService {
     public Employee resolveEmployee(FirebaseToken decodedToken) {
         try {
             String firebaseUid = decodedToken.getUid();
+            String email = decodedToken.getEmail();
 
             return employeeRepository.findById(firebaseUid)
-                    .or(() -> reconcilePendingEmployee(firebaseUid, decodedToken.getEmail()))
+                    .or(() -> reconcilePendingEmployee(firebaseUid, email))
+                    .or(() -> relinkEmployeeByEmail(firebaseUid, email))
                     .or(() -> bootstrapOwnerIfMissing(decodedToken))
+                    .or(() -> registerOwnerOnGoogleSignIn(decodedToken))
                     .orElse(null);
         } catch (Exception ex) {
             logger.warn(
@@ -93,6 +96,65 @@ public class EmployeeReconciliationService {
             owner.setEmail(decodedToken.getEmail().trim());
         }
 
+        return Optional.of(employeeRepository.save(owner));
+    }
+
+    /**
+     * Links a manually provisioned row (same email, different Firebase UID) to the
+     * UID from the current Google sign-in.
+     */
+    @Transactional
+    Optional<Employee> relinkEmployeeByEmail(String firebaseUid, String email) {
+        if (email == null || email.isBlank()) {
+            return Optional.empty();
+        }
+
+        return employeeRepository.findByEmailIgnoreCase(email.trim())
+                .filter(existing -> !firebaseUid.equals(existing.getEmployeeId()))
+                .filter(existing -> !isPendingPlaceholder(existing))
+                .map(existing -> {
+                    Employee linked = new Employee(
+                            firebaseUid,
+                            existing.getFullName(),
+                            existing.getRole() != null ? existing.getRole() : EmployeeRole.OWNER);
+                    linked.setEmail(existing.getEmail());
+                    linked.setDescription(existing.getDescription());
+                    if (existing.getAssignedVillages() != null) {
+                        linked.setAssignedVillages(new java.util.ArrayList<>(existing.getAssignedVillages()));
+                    }
+
+                    employeeRepository.delete(existing);
+                    employeeRepository.flush();
+                    logger.info(
+                            "Relinked employee email={} from uid={} to uid={}",
+                            email,
+                            existing.getEmployeeId(),
+                            firebaseUid);
+                    return employeeRepository.save(linked);
+                });
+    }
+
+    /**
+     * First Google sign-in for an unknown email — register as workspace owner so
+     * operators can use the app without manual Supabase inserts.
+     */
+    @Transactional
+    Optional<Employee> registerOwnerOnGoogleSignIn(FirebaseToken decodedToken) {
+        String email = decodedToken.getEmail();
+        if (email == null || email.isBlank()) {
+            return Optional.empty();
+        }
+        if (employeeRepository.findByEmailIgnoreCase(email.trim()).isPresent()) {
+            return Optional.empty();
+        }
+
+        String firebaseUid = decodedToken.getUid();
+        String name = decodedToken.getName();
+        String fullName = (name != null && !name.isBlank()) ? name.trim() : "Workspace Owner";
+
+        Employee owner = new Employee(firebaseUid, fullName, EmployeeRole.OWNER);
+        owner.setEmail(email.trim());
+        logger.info("Registered Google sign-in as OWNER uid={} email={}", firebaseUid, email);
         return Optional.of(employeeRepository.save(owner));
     }
 

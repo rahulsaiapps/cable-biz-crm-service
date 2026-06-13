@@ -47,8 +47,8 @@ class EmployeeReconciliationServiceTest {
     }
 
     @Test
-    void resolveEmployee_leavesNonPendingEmailMatchUntouched() {
-        Employee owner = new Employee("owner-uid-1", "Owner User", EmployeeRole.OWNER);
+    void resolveEmployee_relinksManualRowWhenEmailMatchesButUidDiffers() {
+        Employee owner = new Employee("manual-uid-1", "Owner User", EmployeeRole.OWNER);
         owner.setEmail("owner@example.com");
         employeeRepository.save(owner);
 
@@ -58,8 +58,30 @@ class EmployeeReconciliationServiceTest {
 
         Employee resolved = reconciliationService.resolveEmployee(token);
 
-        assertThat(resolved).isNull();
-        assertThat(employeeRepository.findById("owner-uid-1")).isPresent();
+        assertThat(resolved).isNotNull();
+        assertThat(resolved.getEmployeeId()).isEqualTo("different-firebase-uid");
+        assertThat(resolved.getRole()).isEqualTo(EmployeeRole.OWNER);
+        assertThat(employeeRepository.findById("manual-uid-1")).isEmpty();
+        assertThat(employeeRepository.findById("different-firebase-uid")).isPresent();
+    }
+
+    @Test
+    void resolveEmployee_registersOwnerForNewGoogleEmailWhenOwnerExists() {
+        Employee existingOwner = new Employee("owner-uid-1", "Owner User", EmployeeRole.OWNER);
+        existingOwner.setEmail("owner@example.com");
+        employeeRepository.save(existingOwner);
+
+        FirebaseToken token = mock(FirebaseToken.class);
+        when(token.getUid()).thenReturn("new-operator-uid");
+        when(token.getName()).thenReturn("New Operator");
+        when(token.getEmail()).thenReturn("new-operator@example.com");
+
+        Employee resolved = reconciliationService.resolveEmployee(token);
+
+        assertThat(resolved).isNotNull();
+        assertThat(resolved.getEmployeeId()).isEqualTo("new-operator-uid");
+        assertThat(resolved.getRole()).isEqualTo(EmployeeRole.OWNER);
+        assertThat(resolved.getEmail()).isEqualTo("new-operator@example.com");
     }
 
     @Test
@@ -82,7 +104,7 @@ class EmployeeReconciliationServiceTest {
     }
 
     @Test
-    void resolveEmployee_doesNotBootstrapOwnerWhenEmailNotAllowlisted() {
+    void resolveEmployee_registersOwnerForUnknownEmailWhenBootstrapAllowlistMisses() {
         FirebaseToken token = mock(FirebaseToken.class);
         when(token.getUid()).thenReturn("operator-firebase-uid");
         when(token.getName()).thenReturn("Rahul Sai");
@@ -90,7 +112,9 @@ class EmployeeReconciliationServiceTest {
 
         Employee resolved = reconciliationService.resolveEmployee(token);
 
-        assertThat(resolved).isNull();
-        assertThat(employeeRepository.findById("operator-firebase-uid")).isEmpty();
+        assertThat(resolved).isNotNull();
+        assertThat(resolved.getEmployeeId()).isEqualTo("operator-firebase-uid");
+        assertThat(resolved.getRole()).isEqualTo(EmployeeRole.OWNER);
+        assertThat(resolved.getEmail()).isEqualTo("not-allowed@example.com");
     }
 }
