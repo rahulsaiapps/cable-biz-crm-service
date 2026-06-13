@@ -1,5 +1,9 @@
 package com.cablepulse.infrastructure;
 
+import com.cablepulse.model.Employee;
+import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.repository.WorkspaceRepository;
+import com.cablepulse.testsupport.TestWorkspaceSupport;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import jakarta.servlet.http.HttpServletRequest;
@@ -41,11 +45,27 @@ class WebHeaderInterceptorTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private EmployeeRepository employeeRepository;
+
+    @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private TestWorkspaceSupport workspaceSupport;
+
     @MockBean
     private FirebaseAuth firebaseAuth;
 
     @BeforeEach
     void setUpFirebaseAuth() throws Exception {
+        workspaceRepository.deleteAll();
+        employeeRepository.deleteAll();
+        workspaceSupport.seedDefaultWorkspace();
+        Employee owner = workspaceSupport.ownerEmployee();
+        owner.setEmployeeId("integration-test-user");
+        employeeRepository.save(owner);
+
         FirebaseToken firebaseToken = mock(FirebaseToken.class);
         when(firebaseToken.getUid()).thenReturn("integration-test-user");
         when(firebaseToken.getClaims()).thenReturn(Map.of("role", "OWNER"));

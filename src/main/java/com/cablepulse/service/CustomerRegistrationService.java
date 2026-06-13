@@ -7,6 +7,7 @@ import com.cablepulse.model.Territory;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.security.SecurityAuth;
 import com.cablepulse.security.WorkspaceAuthorizationService;
 import jakarta.persistence.EntityNotFoundException;
 import org.slf4j.Logger;
@@ -107,6 +108,7 @@ public class CustomerRegistrationService {
                 request,
                 territory,
                 matchedPlan);
+        customer.setWorkspaceId(territory.getWorkspaceId());
         return customerRepository.save(customer);
     }
 
@@ -114,7 +116,7 @@ public class CustomerRegistrationService {
         if (planName == null || planName.isBlank()) {
             return null;
         }
-        return globalPlanRepository.findAll().stream()
+        return globalPlanRepository.findByWorkspaceId(SecurityAuth.requireWorkspaceId()).stream()
                 .filter(plan -> planName.equalsIgnoreCase(plan.getPlanName()))
                 .map(GlobalPlan::getPlanId)
                 .findFirst()

@@ -15,6 +15,16 @@ public interface DailyTransactionRepository extends JpaRepository<DailyTransacti
 
     List<DailyTransaction> findByRecordedAtBetween(LocalDateTime start, LocalDateTime end);
 
+    @Query("""
+            SELECT t FROM DailyTransaction t
+            WHERE t.recordedAt >= :start AND t.recordedAt <= :end
+              AND t.customer.workspaceId = :workspaceId
+            """)
+    List<DailyTransaction> findByWorkspaceIdAndRecordedAtBetween(
+            @Param("workspaceId") String workspaceId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
     List<DailyTransaction> findByFieldAgent_EmployeeIdAndRecordedAtBetweenOrderByRecordedAtDesc(
             String employeeId, LocalDateTime start, LocalDateTime end);
 
@@ -39,14 +49,24 @@ public interface DailyTransactionRepository extends JpaRepository<DailyTransacti
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
+    @Query("""
+            SELECT COALESCE(SUM(t.amountCollected), 0)
+            FROM DailyTransaction t
+            WHERE t.recordedAt >= :start AND t.recordedAt <= :end
+              AND t.customer.workspaceId = :workspaceId
+            """)
+    BigDecimal sumAmountCollectedBetweenForWorkspace(
+            @Param("workspaceId") String workspaceId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
     /**
-     * Total customer collections ({@code SUM(amount_collected)}) for a calendar month.
-     * Returns zero when no rows match — never {@code null}.
+     * Total customer collections for a calendar month within a workspace.
      */
-    default BigDecimal sumAmountCollectedForCalendarMonth(java.time.YearMonth month) {
+    default BigDecimal sumAmountCollectedForCalendarMonth(String workspaceId, java.time.YearMonth month) {
         java.time.LocalDateTime start = month.atDay(1).atStartOfDay();
         java.time.LocalDateTime end = month.atEndOfMonth().atTime(java.time.LocalTime.MAX);
-        BigDecimal total = sumAmountCollectedBetween(start, end);
+        BigDecimal total = sumAmountCollectedBetweenForWorkspace(workspaceId, start, end);
         return total != null ? total : BigDecimal.ZERO;
     }
 }

@@ -30,6 +30,9 @@ public class DailyExpense {
     @Column(name = "logged_by_employee_id")
     private String loggedByEmployeeId;
 
+    @Column(name = "workspace_id", nullable = false)
+    private String workspaceId;
+
     public DailyExpense() {
     }
 
@@ -96,5 +99,13 @@ public class DailyExpense {
 
     public void setLoggedByEmployeeId(String loggedByEmployeeId) {
         this.loggedByEmployeeId = loggedByEmployeeId;
+    }
+
+    public String getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+        this.workspaceId = workspaceId;
     }
 }

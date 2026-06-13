@@ -2,6 +2,7 @@ package com.cablepulse.service;
 
 import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
+import com.cablepulse.security.SecurityAuth;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,7 +45,7 @@ public class CustomerBalanceService {
 
     @Transactional(readOnly = true)
     public long countPendingCustomers() {
-        return customerRepository.countPendingActivationOrOutstanding();
+        return customerRepository.countPendingCustomersByWorkspaceId(SecurityAuth.requireWorkspaceId());
     }
 
     public static String paymentStatusFromBalance(BigDecimal balanceDue) {

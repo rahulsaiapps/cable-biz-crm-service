@@ -1,5 +1,8 @@
 package com.cablepulse.security;
 
+import com.cablepulse.model.Employee;
+import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.service.WorkspaceService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import io.jsonwebtoken.Claims;
@@ -29,16 +32,22 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
     private final FirebaseAuth firebaseAuth;
     private final EmployeeRoleResolver employeeRoleResolver;
     private final JwtTokenService jwtTokenService;
+    private final EmployeeRepository employeeRepository;
+    private final WorkspaceService workspaceService;
     private final boolean allowFirebaseBearer;
 
     public FirebaseAuthenticationFilter(
             FirebaseAuth firebaseAuth,
             EmployeeRoleResolver employeeRoleResolver,
             JwtTokenService jwtTokenService,
+            EmployeeRepository employeeRepository,
+            WorkspaceService workspaceService,
             @Value("${cablepulse.security.allow-firebase-bearer:false}") boolean allowFirebaseBearer) {
         this.firebaseAuth = firebaseAuth;
         this.employeeRoleResolver = employeeRoleResolver;
         this.jwtTokenService = jwtTokenService;
+        this.employeeRepository = employeeRepository;
+        this.workspaceService = workspaceService;
         this.allowFirebaseBearer = allowFirebaseBearer;
     }
 
@@ -48,20 +57,24 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
 
-        String authHeader = request.getHeader("Authorization");
+        try {
+            String authHeader = request.getHeader("Authorization");
 
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String bearerToken = authHeader.substring(7);
-            boolean authenticated = authenticateBackendJwt(request, bearerToken);
-            if (!authenticated) {
-                authenticated = authenticateFirebaseToken(request, bearerToken);
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                String bearerToken = authHeader.substring(7);
+                boolean authenticated = authenticateBackendJwt(request, bearerToken);
+                if (!authenticated && allowFirebaseBearer) {
+                    authenticated = authenticateFirebaseToken(request, bearerToken);
+                }
+                if (!authenticated) {
+                    SecurityContextHolder.clearContext();
+                }
             }
-            if (!authenticated) {
-                SecurityContextHolder.clearContext();
-            }
+
+            filterChain.doFilter(request, response);
+        } finally {
+            TenantContext.clear();
         }
-
-        filterChain.doFilter(request, response);
     }
 
     private boolean authenticateBackendJwt(HttpServletRequest request, String bearerToken) {
@@ -72,14 +85,12 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             }
 
             String uid = claims.getSubject();
-            String role = claims.get(JwtTokenService.CLAIM_ROLE, String.class);
-            if (role == null || role.isBlank()) {
-                role = employeeRoleResolver.resolveRoleForUserId(uid);
-            }
+            String role = employeeRoleResolver.resolveRoleForUserId(uid);
 
             List<GrantedAuthority> authorities =
                     employeeRoleResolver.resolveAuthoritiesForUserId(uid, role);
             setAuthentication(request, uid, bearerToken, authorities);
+            bindTenantContext(uid);
             return true;
         } catch (JwtException e) {
             return false;
@@ -90,13 +101,32 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         try {
             FirebaseToken decodedToken = firebaseAuth.verifyIdToken(bearerToken);
             String uid = decodedToken.getUid();
-            List<GrantedAuthority> authorities = employeeRoleResolver.resolveAuthorities(decodedToken);
+            String role = employeeRoleResolver.resolveRoleForUserId(uid);
+            List<GrantedAuthority> authorities =
+                    employeeRoleResolver.resolveAuthoritiesForUserId(uid, role);
             setAuthentication(request, uid, bearerToken, authorities);
+            bindTenantContext(uid);
             return true;
         } catch (Exception e) {
             logger.debug("Firebase token verification failed");
             return false;
         }
+    }
+
+    private void bindTenantContext(String uid) {
+        employeeRepository.findById(uid).ifPresent(employee -> {
+            String workspaceId = employee.getWorkspaceId();
+            if (workspaceId == null || workspaceId.isBlank()) {
+                return;
+            }
+            try {
+                String businessName = workspaceService.businessNameFor(workspaceId);
+                TenantContext.set(workspaceId, businessName);
+            } catch (Exception ex) {
+                logger.warn("Failed to bind tenant context for uid={}: {}", uid, ex.getMessage());
+                TenantContext.set(workspaceId, "Workspace");
+            }
+        });
     }
 
     private void setAuthentication(

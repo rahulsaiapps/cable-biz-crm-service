@@ -6,6 +6,7 @@ import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.EmployeeRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
+import com.cablepulse.security.SecurityAuth;
 import com.cablepulse.security.WorkspaceAuthorizationService;
 import com.cablepulse.util.PiiMaskingUtil;
 import jakarta.persistence.EntityNotFoundException;
@@ -97,7 +98,7 @@ public class CustomerService {
         String planName = request.resolvedPlanName();
         int monthlyRate = request.resolvedMonthlyRate();
 
-        GlobalPlan matchedPlan = globalPlanRepository.findAll().stream()
+        GlobalPlan matchedPlan = globalPlanRepository.findByWorkspaceId(SecurityAuth.requireWorkspaceId()).stream()
                 .filter(plan -> planName.equalsIgnoreCase(plan.getPlanName()))
                 .findFirst()
                 .orElse(null);
@@ -109,6 +110,7 @@ public class CustomerService {
                     BigDecimal.valueOf(monthlyRate),
                     null
             );
+            matchedPlan.setWorkspaceId(SecurityAuth.requireWorkspaceId());
             matchedPlan = globalPlanRepository.save(matchedPlan);
         }
 
@@ -119,19 +121,7 @@ public class CustomerService {
     }
 
     private Employee resolveFieldAgent(String agentEmployeeId) {
-        if (agentEmployeeId != null && !agentEmployeeId.isBlank()) {
-            Employee found = employeeRepository.findById(agentEmployeeId).orElse(null);
-            if (found != null) {
-                return found;
-            }
-        }
-        List<Employee> employees = employeeRepository.findAll();
-        if (!employees.isEmpty()) {
-            return employees.get(0);
-        }
-        String id = agentEmployeeId != null && !agentEmployeeId.isBlank() ? agentEmployeeId : "sys-agent";
-        Employee systemAgent = new Employee(id, "System Agent", EmployeeRole.COLLECTION_BOY);
-        return employeeRepository.save(systemAgent);
+        return workspaceAuthorizationService.requireFieldAgentInWorkspace(agentEmployeeId, employeeRepository);
     }
 
     private CustomerProfileDTO toProfileDto(Customer customer) {

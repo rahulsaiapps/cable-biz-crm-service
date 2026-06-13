@@ -274,6 +274,12 @@ public class DtoClasses {
         String description
     ) {}
 
+    public record UpdateEmployeeRequestDto(
+        @JsonProperty("full_name") String fullName,
+        String email,
+        @JsonProperty("assigned_villages") List<String> assignedVillages
+    ) {}
+
     public record EmployeeProfileDTO(
         @JsonProperty("employee_id") String employeeId,
         @JsonProperty("full_name") String fullName,

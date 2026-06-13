@@ -25,6 +25,9 @@ public class Employee {
     @Column(name = "description")
     private String description;
 
+    @Column(name = "workspace_id", nullable = false)
+    private String workspaceId;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "employee_assigned_villages", joinColumns = @JoinColumn(name = "employee_id"))
     @Column(name = "village_name")
@@ -84,5 +87,13 @@ public class Employee {
 
     public void setAssignedVillages(List<String> assignedVillages) {
         this.assignedVillages = assignedVillages != null ? new ArrayList<>(assignedVillages) : new ArrayList<>();
+    }
+
+    public String getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+        this.workspaceId = workspaceId;
     }
 }

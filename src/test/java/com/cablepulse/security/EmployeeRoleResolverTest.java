@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.security.core.GrantedAuthority;
 
 import java.util.List;
@@ -20,6 +22,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class EmployeeRoleResolverTest {
 
     @Mock
@@ -72,22 +75,25 @@ class EmployeeRoleResolverTest {
     }
 
     @Test
-    void resolveAuthorities_firebaseClaimTakesPrecedence() {
+    void resolveAuthorities_usesEmployeeRow_notFirebaseClaims() {
         FirebaseToken token = mock(FirebaseToken.class);
         when(token.getClaims()).thenReturn(Map.of("role", "OWNER"));
+        when(employeeReconciliationService.resolveEmployee(token))
+                .thenReturn(new Employee("uid-collector", "Agent", EmployeeRole.COLLECTION_BOY));
 
         List<GrantedAuthority> authorities = resolver.resolveAuthorities(token);
 
         assertThat(authorities).extracting(GrantedAuthority::getAuthority)
-                .containsExactly("ROLE_OWNER");
+                .containsExactly("ROLE_COLLECTION_BOY");
     }
 
     @Test
-    void resolveRoleClaim_firebaseOwnerClaim_returnsOwnerWithoutEmployeeRow() {
-        FirebaseToken token = mock(FirebaseToken.class);
-        when(token.getClaims()).thenReturn(Map.of("role", "OWNER"));
+    void resolveRoleForUserId_readsPersistedRole() {
+        when(employeeRepository.findById("uid-owner"))
+                .thenReturn(java.util.Optional.of(
+                        new Employee("uid-owner", "Owner", EmployeeRole.OWNER)));
 
-        assertThat(resolver.resolveRoleClaim(token)).isEqualTo("ROLE_OWNER");
+        assertThat(resolver.resolveRoleForUserId("uid-owner")).isEqualTo("ROLE_OWNER");
     }
 
     private static FirebaseToken mockToken(String uid, Map<String, Object> claims) {

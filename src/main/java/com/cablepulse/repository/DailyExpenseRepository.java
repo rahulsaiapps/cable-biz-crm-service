@@ -9,7 +9,8 @@ import java.util.List;
 @Repository
 public interface DailyExpenseRepository extends JpaRepository<DailyExpense, Long> {
 
-    List<DailyExpense> findByLoggedAtBetween(LocalDateTime start, LocalDateTime end);
+    List<DailyExpense> findByWorkspaceIdAndLoggedAtBetween(
+            String workspaceId, LocalDateTime start, LocalDateTime end);
 
     List<DailyExpense> findByLoggedByEmployeeIdAndLoggedAtBetweenOrderByLoggedAtDesc(
             String loggedByEmployeeId, LocalDateTime start, LocalDateTime end);

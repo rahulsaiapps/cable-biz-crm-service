@@ -5,6 +5,7 @@ import com.cablepulse.service.FinanceAnalyticsService;
 import com.cablepulse.service.NotificationDispatchService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -14,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
+@PreAuthorize("hasRole('OWNER')")
 public class NotificationController {
 
     private final NotificationDispatchService notificationDispatchService;

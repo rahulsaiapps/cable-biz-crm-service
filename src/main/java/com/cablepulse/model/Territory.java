@@ -25,6 +25,9 @@ public class Territory {
     @Column(name = "state")
     private String state;
 
+    @Column(name = "workspace_id", nullable = false)
+    private String workspaceId;
+
     @Column(name = "is_deleted", nullable = false)
     private boolean deleted = false;
 
@@ -84,5 +87,13 @@ public class Territory {
 
     public void setDeleted(boolean deleted) {
         this.deleted = deleted;
+    }
+
+    public String getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+        this.workspaceId = workspaceId;
     }
 }

@@ -5,6 +5,7 @@ import com.cablepulse.exception.TerritoryAlreadyExistsException;
 import com.cablepulse.model.Territory;
 import com.cablepulse.model.TerritoryBlock;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.security.SecurityAuth;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,15 +23,17 @@ public class TerritoryService {
 
     @Transactional
     public Territory createTerritory(TerritoryRequestDto requestDto) {
+        String workspaceId = SecurityAuth.requireWorkspaceId();
         String locationName = requestDto.getLocationName().trim();
 
-        territoryRepository.findByLocationNameIgnoreCase(locationName)
+        territoryRepository.findByWorkspaceIdAndLocationNameIgnoreCase(workspaceId, locationName)
                 .ifPresent(existing -> {
                     throw new TerritoryAlreadyExistsException(existing);
                 });
 
         String territoryId = "ter_" + UUID.randomUUID().toString().replace("-", "");
         Territory territory = new Territory(territoryId, locationName);
+        territory.setWorkspaceId(workspaceId);
 
         List<String> blocks = requestDto.getBlocks();
         if (blocks != null) {
@@ -44,16 +47,15 @@ public class TerritoryService {
         return territoryRepository.save(territory);
     }
 
-    /**
-     * Marks a territory inactive without removing blocks or customer rows.
-     * Uses an explicit flag update instead of {@code repository.delete()} so
-     * Hibernate does not cascade hard-deletes to child blocks.
-     */
     @Transactional
     public void softDeleteTerritory(String territoryId) {
+        String workspaceId = SecurityAuth.requireWorkspaceId();
         Territory territory = territoryRepository.findById(territoryId.trim())
                 .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException(
                         "Territory not found: " + territoryId));
+        if (!workspaceId.equals(territory.getWorkspaceId())) {
+            throw new jakarta.persistence.EntityNotFoundException("Territory not found: " + territoryId);
+        }
         territory.setDeleted(true);
         territoryRepository.save(territory);
     }

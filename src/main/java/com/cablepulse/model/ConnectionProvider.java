@@ -11,7 +11,10 @@ public class ConnectionProvider {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "name", unique = true, nullable = false)
+    @Column(name = "workspace_id", nullable = false)
+    private String workspaceId;
+
+    @Column(name = "name", nullable = false)
     private String name;
 
     @Column(name = "registered_at", nullable = false)
@@ -19,7 +22,8 @@ public class ConnectionProvider {
 
     public ConnectionProvider() {}
 
-    public ConnectionProvider(String name) {
+    public ConnectionProvider(String workspaceId, String name) {
+        this.workspaceId = workspaceId;
         this.name = name;
         this.registeredAt = LocalDateTime.now();
     }
@@ -46,5 +50,13 @@ public class ConnectionProvider {
 
     public void setRegisteredAt(LocalDateTime registeredAt) {
         this.registeredAt = registeredAt;
+    }
+
+    public String getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+        this.workspaceId = workspaceId;
     }
 }

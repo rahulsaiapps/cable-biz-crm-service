@@ -2,6 +2,7 @@ package com.cablepulse.service;
 
 import com.cablepulse.model.Employee;
 import com.cablepulse.model.EmployeeRole;
+import com.cablepulse.model.Workspace;
 import com.cablepulse.repository.EmployeeRepository;
 import com.google.firebase.auth.FirebaseToken;
 import org.slf4j.Logger;
@@ -24,12 +25,15 @@ public class EmployeeReconciliationService {
     static final String PENDING_ID_PREFIX = "PENDING-";
 
     private final EmployeeRepository employeeRepository;
+    private final WorkspaceService workspaceService;
     private final Set<String> bootstrapOwnerEmails;
 
     public EmployeeReconciliationService(
             EmployeeRepository employeeRepository,
+            WorkspaceService workspaceService,
             @Value("${cablepulse.security.bootstrap-owner-emails:}") String bootstrapOwnerEmails) {
         this.employeeRepository = employeeRepository;
+        this.workspaceService = workspaceService;
         this.bootstrapOwnerEmails = parseEmailAllowlist(bootstrapOwnerEmails);
     }
 
@@ -62,13 +66,13 @@ public class EmployeeReconciliationService {
     }
 
     /**
-     * When the workspace has no OWNER yet, the first Firebase sign-in is
-     * promoted to OWNER so the operator can manage customers and territories.
+     * When the legacy workspace has no OWNER yet, the first allowlisted Firebase sign-in is
+     * promoted to OWNER in the legacy workspace.
      */
     @Transactional
     Optional<Employee> bootstrapOwnerIfMissing(FirebaseToken decodedToken) {
-        boolean ownerExists = employeeRepository.findAll().stream()
-                .anyMatch(employee -> employee.getRole() == EmployeeRole.OWNER);
+        boolean ownerExists = employeeRepository.existsByWorkspaceIdAndRole(
+                WorkspaceService.LEGACY_WORKSPACE_ID, EmployeeRole.OWNER);
         if (ownerExists) {
             return Optional.empty();
         }
@@ -85,13 +89,10 @@ public class EmployeeReconciliationService {
         }
 
         String firebaseUid = decodedToken.getUid();
-        String name = decodedToken.getName();
-        String fullName = (name != null && !name.isBlank()) ? name.trim() : "Workspace Owner";
+        String fullName = defaultFullName(decodedToken);
 
-        Employee owner = new Employee(
-                firebaseUid,
-                fullName,
-                EmployeeRole.OWNER);
+        Employee owner = new Employee(firebaseUid, fullName, EmployeeRole.OWNER);
+        owner.setWorkspaceId(WorkspaceService.LEGACY_WORKSPACE_ID);
         if (decodedToken.getEmail() != null && !decodedToken.getEmail().isBlank()) {
             owner.setEmail(decodedToken.getEmail().trim());
         }
@@ -119,6 +120,7 @@ public class EmployeeReconciliationService {
                             existing.getRole() != null ? existing.getRole() : EmployeeRole.OWNER);
                     linked.setEmail(existing.getEmail());
                     linked.setDescription(existing.getDescription());
+                    linked.setWorkspaceId(existing.getWorkspaceId());
                     if (existing.getAssignedVillages() != null) {
                         linked.setAssignedVillages(new java.util.ArrayList<>(existing.getAssignedVillages()));
                     }
@@ -135,8 +137,7 @@ public class EmployeeReconciliationService {
     }
 
     /**
-     * First Google sign-in for an unknown email — register as workspace owner so
-     * operators can use the app without manual Supabase inserts.
+     * First Google sign-in for an unknown email — provision a new workspace and owner.
      */
     @Transactional
     Optional<Employee> registerOwnerOnGoogleSignIn(FirebaseToken decodedToken) {
@@ -149,12 +150,18 @@ public class EmployeeReconciliationService {
         }
 
         String firebaseUid = decodedToken.getUid();
-        String name = decodedToken.getName();
-        String fullName = (name != null && !name.isBlank()) ? name.trim() : "Workspace Owner";
+        String fullName = defaultFullName(decodedToken);
+
+        Workspace workspace = workspaceService.provisionForNewOwner(firebaseUid, fullName);
 
         Employee owner = new Employee(firebaseUid, fullName, EmployeeRole.OWNER);
         owner.setEmail(email.trim());
-        logger.info("Registered Google sign-in as OWNER uid={} email={}", firebaseUid, email);
+        owner.setWorkspaceId(workspace.getWorkspaceId());
+        logger.info(
+                "Registered Google sign-in as OWNER uid={} email={} workspace={}",
+                firebaseUid,
+                email,
+                workspace.getWorkspaceId());
         return Optional.of(employeeRepository.save(owner));
     }
 
@@ -177,11 +184,20 @@ public class EmployeeReconciliationService {
     private Employee claimPendingEmployee(Employee pending, String firebaseUid) {
         Employee claimed = new Employee(firebaseUid, pending.getFullName(), pending.getRole());
         claimed.setEmail(pending.getEmail());
+        claimed.setWorkspaceId(pending.getWorkspaceId());
+        if (pending.getAssignedVillages() != null) {
+            claimed.setAssignedVillages(new java.util.ArrayList<>(pending.getAssignedVillages()));
+        }
 
         employeeRepository.delete(pending);
         employeeRepository.flush();
 
         return employeeRepository.save(claimed);
+    }
+
+    private static String defaultFullName(FirebaseToken decodedToken) {
+        String name = decodedToken.getName();
+        return (name != null && !name.isBlank()) ? name.trim() : "Workspace Owner";
     }
 
     private boolean isBootstrapOwnerEmailAllowed(String email) {

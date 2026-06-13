@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 
 /**
  * Enforces workspace territory and customer access for collection agents.
- * Owners may access all territories; collection agents are limited to assigned villages.
+ * Owners may access all territories in their workspace; collection agents are limited to assigned villages.
  */
 @Service
 public class WorkspaceAuthorizationService {
@@ -41,11 +41,12 @@ public class WorkspaceAuthorizationService {
     }
 
     public void assertTerritoryAccess(String territoryId) {
+        Territory territory = territoryRepository.findById(territoryId.trim())
+                .orElseThrow(() -> new EntityNotFoundException("Territory not found: " + territoryId));
+        assertSameWorkspace(territory.getWorkspaceId());
+
         if (SecurityAuth.isOwner()) {
             return;
-        }
-        if (territoryId == null || territoryId.isBlank()) {
-            throw new AccessDeniedException("Territory access denied");
         }
         Set<String> allowed = resolveAccessibleTerritoryIds();
         if (!allowed.contains(territoryId.trim())) {
@@ -56,6 +57,7 @@ public class WorkspaceAuthorizationService {
     public void assertCustomerAccess(String customerId) {
         Customer customer = customerRepository.findById(customerId.trim())
                 .orElseThrow(() -> new EntityNotFoundException("Customer not found: " + customerId));
+        assertSameWorkspace(customer.getWorkspaceId());
         String territoryId = customer.getTerritory() != null
                 ? customer.getTerritory().getTerritoryId()
                 : null;
@@ -66,8 +68,9 @@ public class WorkspaceAuthorizationService {
     }
 
     public Set<String> resolveAccessibleTerritoryIds() {
+        String workspaceId = SecurityAuth.requireWorkspaceId();
         if (SecurityAuth.isOwner()) {
-            return territoryRepository.findAll().stream()
+            return territoryRepository.findByWorkspaceId(workspaceId).stream()
                     .map(Territory::getTerritoryId)
                     .collect(Collectors.toSet());
         }
@@ -79,6 +82,9 @@ public class WorkspaceAuthorizationService {
 
         Optional<Employee> employee = employeeRepository.findById(userId);
         if (employee.isEmpty()) {
+            return Set.of();
+        }
+        if (!workspaceId.equals(employee.get().getWorkspaceId())) {
             return Set.of();
         }
 
@@ -94,7 +100,7 @@ public class WorkspaceAuthorizationService {
                 .collect(Collectors.toSet());
 
         Set<String> territoryIds = new HashSet<>();
-        for (Territory territory : territoryRepository.findAll()) {
+        for (Territory territory : territoryRepository.findByWorkspaceId(workspaceId)) {
             String location = territory.getLocationName();
             if (location != null && normalizedVillages.contains(location.trim().toLowerCase())) {
                 territoryIds.add(territory.getTerritoryId());
@@ -122,5 +128,66 @@ public class WorkspaceAuthorizationService {
                 .filter(c -> c.getTerritory() != null
                         && allowed.contains(c.getTerritory().getTerritoryId()))
                 .toList();
+    }
+
+    /**
+     * Resolves territory IDs for the signed-in employee record (token-swap / refresh).
+     */
+    public List<String> resolveTerritoryIdsForEmployee(Employee employee) {
+        if (employee == null || employee.getWorkspaceId() == null) {
+            return List.of();
+        }
+        if (employee.getRole() == com.cablepulse.model.EmployeeRole.OWNER) {
+            return territoryRepository.findByWorkspaceId(employee.getWorkspaceId()).stream()
+                    .map(Territory::getTerritoryId)
+                    .sorted()
+                    .toList();
+        }
+
+        List<String> assignedVillages = employee.getAssignedVillages();
+        if (assignedVillages == null || assignedVillages.isEmpty()) {
+            return List.of();
+        }
+
+        Set<String> normalizedVillages = assignedVillages.stream()
+                .map(String::trim)
+                .filter(v -> !v.isEmpty())
+                .map(String::toLowerCase)
+                .collect(Collectors.toSet());
+
+        return territoryRepository.findByWorkspaceId(employee.getWorkspaceId()).stream()
+                .filter(t -> t.getLocationName() != null
+                        && normalizedVillages.contains(t.getLocationName().trim().toLowerCase()))
+                .map(Territory::getTerritoryId)
+                .sorted()
+                .toList();
+    }
+
+    private static void assertSameWorkspace(String entityWorkspaceId) {
+        String currentWorkspaceId = SecurityAuth.requireWorkspaceId();
+        if (entityWorkspaceId == null || !currentWorkspaceId.equals(entityWorkspaceId)) {
+            throw new AccessDeniedException("Workspace access denied");
+        }
+    }
+
+    public void assertEmployeeInWorkspace(Employee employee) {
+        if (employee == null) {
+            throw new AccessDeniedException("Employee access denied");
+        }
+        assertSameWorkspace(employee.getWorkspaceId());
+    }
+
+    public Employee requireFieldAgentInWorkspace(String agentEmployeeId, EmployeeRepository employeeRepository) {
+        String effectiveId = (agentEmployeeId != null && !agentEmployeeId.isBlank())
+                ? agentEmployeeId.trim()
+                : SecurityAuth.currentUserId();
+        if (effectiveId == null || effectiveId.isBlank()) {
+            throw new AccessDeniedException("Field agent identity required");
+        }
+
+        Employee found = employeeRepository.findById(effectiveId)
+                .orElseThrow(() -> new AccessDeniedException("Field agent not found"));
+        assertEmployeeInWorkspace(found);
+        return found;
     }
 }

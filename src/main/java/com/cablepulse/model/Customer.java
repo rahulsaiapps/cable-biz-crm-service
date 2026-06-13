@@ -51,6 +51,9 @@ public class Customer {
     @Column(name = "card_number")
     private String cardNumber;
 
+    @Column(name = "workspace_id", nullable = false)
+    private String workspaceId;
+
     @Column(name = "is_deleted", nullable = false)
     private boolean deleted = false;
 
@@ -185,5 +188,13 @@ public class Customer {
 
     public void setDeleted(boolean deleted) {
         this.deleted = deleted;
+    }
+
+    public String getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+        this.workspaceId = workspaceId;
     }
 }

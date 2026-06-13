@@ -4,6 +4,7 @@ import com.cablepulse.model.*;
 import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.DailyTransactionRepository;
+import com.cablepulse.security.WorkspaceAuthorizationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,14 +19,17 @@ public class PaymentProcessingService {
     private final CustomerRepository customerRepository;
     private final CustomerLedgerRepository customerLedgerRepository;
     private final DailyTransactionRepository dailyTransactionRepository;
+    private final WorkspaceAuthorizationService workspaceAuthorizationService;
 
     public PaymentProcessingService(
             CustomerRepository customerRepository,
             CustomerLedgerRepository customerLedgerRepository,
-            DailyTransactionRepository dailyTransactionRepository) {
+            DailyTransactionRepository dailyTransactionRepository,
+            WorkspaceAuthorizationService workspaceAuthorizationService) {
         this.customerRepository = customerRepository;
         this.customerLedgerRepository = customerLedgerRepository;
         this.dailyTransactionRepository = dailyTransactionRepository;
+        this.workspaceAuthorizationService = workspaceAuthorizationService;
     }
 
     @Transactional
@@ -43,6 +47,8 @@ public class PaymentProcessingService {
         if (months == null || months.isEmpty()) {
             throw new IllegalArgumentException("At least one billing month is required");
         }
+
+        workspaceAuthorizationService.assertCustomerAccess(customerId);
 
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new NoSuchElementException("Customer not found: " + customerId));

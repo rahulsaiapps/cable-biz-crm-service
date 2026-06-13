@@ -1,6 +1,8 @@
 package com.cablepulse.controller;
 
 import com.cablepulse.model.Customer;
+import com.cablepulse.model.Employee;
+import com.cablepulse.model.EmployeeRole;
 import com.cablepulse.model.GlobalPlan;
 import com.cablepulse.model.Territory;
 import com.cablepulse.repository.CustomerLedgerRepository;
@@ -8,7 +10,10 @@ import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.DailyTransactionRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.repository.WorkspaceRepository;
 import com.cablepulse.testsupport.TestDatabaseCleaner;
+import com.cablepulse.testsupport.TestWorkspaceSupport;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,6 +63,15 @@ class CustomerProfileControllerTest {
     @Autowired
     private TestDatabaseCleaner testDatabaseCleaner;
 
+    @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private EmployeeRepository employeeRepository;
+
+    @Autowired
+    private TestWorkspaceSupport workspaceSupport;
+
     @MockBean
     private FirebaseAuth firebaseAuth;
 
@@ -70,14 +84,16 @@ class CustomerProfileControllerTest {
     void setUp() throws Exception {
         e2eId = UUID.randomUUID().toString();
         sessionId = UUID.randomUUID().toString();
-        testDatabaseCleaner.wipeCoreWorkspaceData();
+        testDatabaseCleaner.wipeAndSeedDefaultWorkspace(
+                workspaceRepository, employeeRepository, workspaceSupport);
 
         territoryId = "ter_" + UUID.randomUUID().toString().replace("-", "");
-        territoryRepository.save(new Territory(territoryId, "Kolamuru"));
+        territoryRepository.save(workspaceSupport.territory(territoryId, "Kolamuru"));
 
         customerId = "cust_" + UUID.randomUUID().toString().replace("-", "");
-        GlobalPlan plan = globalPlanRepository.save(
-                new GlobalPlan("plan-basic", "Basic Pack", new BigDecimal("199.00"), "SD"));
+        GlobalPlan plan = new GlobalPlan("plan-basic", "Basic Pack", new BigDecimal("199.00"), "SD");
+        plan.setWorkspaceId(TestWorkspaceSupport.WORKSPACE_ID);
+        plan = globalPlanRepository.save(plan);
         Customer customer = new Customer(
                 customerId,
                 1,
@@ -89,6 +105,7 @@ class CustomerProfileControllerTest {
                 territoryRepository.findById(territoryId).orElseThrow(),
                 plan
         );
+        customer.setWorkspaceId(TestWorkspaceSupport.WORKSPACE_ID);
         customerRepository.save(customer);
 
         FirebaseToken firebaseToken = mock(FirebaseToken.class);
@@ -143,5 +160,31 @@ class CustomerProfileControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.activePlanName").value("Premium HD"))
                 .andExpect(jsonPath("$.data.monthlyRate").value(350));
+    }
+
+    @Test
+    void updateSubscription_collectionBoy_returnsForbidden() throws Exception {
+        FirebaseToken collectionBoyToken = mock(FirebaseToken.class);
+        when(collectionBoyToken.getUid()).thenReturn("collection-boy-uid");
+        when(collectionBoyToken.getClaims()).thenReturn(Map.of("role", "COLLECTION_BOY"));
+        when(firebaseAuth.verifyIdToken(anyString())).thenReturn(collectionBoyToken);
+
+        Employee collectionBoy = new Employee("collection-boy-uid", "Field Agent", EmployeeRole.COLLECTION_BOY);
+        collectionBoy.setAssignedVillages(java.util.List.of("Kolamuru"));
+        collectionBoy.setWorkspaceId(TestWorkspaceSupport.WORKSPACE_ID);
+        employeeRepository.save(collectionBoy);
+
+        mockMvc.perform(put("/api/v1/customers/{id}/subscription", customerId)
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "plan_name": "Premium HD",
+                                  "plan_monthly_rate": 350
+                                }
+                                """))
+                .andExpect(status().isForbidden());
     }
 }

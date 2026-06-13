@@ -14,8 +14,11 @@ import com.cablepulse.service.AuditLogService;
 import com.cablepulse.service.CustomerBalanceService;
 import com.cablepulse.service.TerritoryService;
 import com.cablepulse.service.WorkspaceProviderService;
+import com.cablepulse.security.SecurityAuth;
 import com.cablepulse.security.WorkspaceAuthorizationService;
+import com.cablepulse.service.WorkspaceService;
 import com.cablepulse.util.EtagSupport;
+import com.cablepulse.util.PiiMaskingUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
@@ -44,6 +47,7 @@ public class WorkspaceController {
     private final CustomerBalanceService customerBalanceService;
     private final TerritoryService territoryService;
     private final WorkspaceAuthorizationService workspaceAuthorizationService;
+    private final WorkspaceService workspaceService;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
 
@@ -55,6 +59,7 @@ public class WorkspaceController {
             CustomerBalanceService customerBalanceService,
             TerritoryService territoryService,
             WorkspaceAuthorizationService workspaceAuthorizationService,
+            WorkspaceService workspaceService,
             AuditLogService auditLogService,
             ObjectMapper objectMapper) {
         this.customerRepository = customerRepository;
@@ -64,15 +69,47 @@ public class WorkspaceController {
         this.customerBalanceService = customerBalanceService;
         this.territoryService = territoryService;
         this.workspaceAuthorizationService = workspaceAuthorizationService;
+        this.workspaceService = workspaceService;
         this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
+    }
+
+    @GetMapping("/info")
+    public ResponseEntity<StandardResponse_WorkspaceInfo> getWorkspaceInfo() {
+        String workspaceId = SecurityAuth.requireWorkspaceId();
+        String businessName = workspaceService.businessNameFor(workspaceId);
+        WorkspaceInfo info = new WorkspaceInfo(workspaceId, businessName);
+        StandardResponse_WorkspaceInfo response = new StandardResponse_WorkspaceInfo(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                info
+        );
+        return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/business-name")
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<StandardResponse_WorkspaceInfo> updateBusinessName(
+            @RequestBody UpdateBusinessNameRequest request) {
+        String workspaceId = SecurityAuth.requireWorkspaceId();
+        var workspace = workspaceService.updateBusinessName(workspaceId, request.businessName());
+        WorkspaceInfo info = new WorkspaceInfo(workspace.getWorkspaceId(), workspace.getBusinessName());
+        StandardResponse_WorkspaceInfo response = new StandardResponse_WorkspaceInfo(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                info
+        );
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/territories")
     public ResponseEntity<StandardResponse_Territories> listTerritories(
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        String workspaceId = SecurityAuth.requireWorkspaceId();
         List<TerritorySummaryDTO> summaries = workspaceAuthorizationService
-                .filterAccessibleTerritories(territoryRepository.findAll()).stream()
+                .filterAccessibleTerritories(territoryRepository.findByWorkspaceId(workspaceId)).stream()
                 .map(this::toTerritorySummary)
                 .collect(Collectors.toList());
 
@@ -117,13 +154,14 @@ public class WorkspaceController {
     @GetMapping("/territories/active-locations")
     public ResponseEntity<StandardResponse_LocationNames> getActiveTerritoryLocationNames(
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        String workspaceId = SecurityAuth.requireWorkspaceId();
         Set<String> allowedLocationNames = workspaceAuthorizationService
-                .filterAccessibleTerritories(territoryRepository.findAll()).stream()
+                .filterAccessibleTerritories(territoryRepository.findByWorkspaceId(workspaceId)).stream()
                 .map(Territory::getLocationName)
                 .filter(name -> name != null && !name.isBlank())
                 .collect(Collectors.toSet());
 
-        List<String> locationNames = territoryRepository.findDistinctActiveLocationNames().stream()
+        List<String> locationNames = territoryRepository.findDistinctActiveLocationNames(workspaceId).stream()
                 .filter(allowedLocationNames::contains)
                 .collect(Collectors.toList());
 
@@ -151,7 +189,8 @@ public class WorkspaceController {
                 .map(t -> t.getLocationName())
                 .orElse("Default Location");
 
-        List<Customer> customers = customerRepository.findByTerritoryIdWithPlan(locationId);
+        List<Customer> customers = customerRepository.findByTerritoryIdWithPlan(
+                SecurityAuth.requireWorkspaceId(), locationId);
         List<String> customerIds = customers.stream().map(Customer::getCustomerId).toList();
         Map<String, BigDecimal> balanceByCustomerId = customerBalanceService.sumDueAmountByCustomerIds(customerIds);
 
@@ -161,6 +200,13 @@ public class WorkspaceController {
                     (c.getGlobalPlan() != null ? c.getGlobalPlan().getMonthlyRate() : BigDecimal.ZERO);
             BigDecimal balanceDue = balanceByCustomerId.getOrDefault(c.getCustomerId(), BigDecimal.ZERO);
             String paymentStatus = CustomerBalanceService.paymentStatusFromBalance(balanceDue);
+
+            String boxNumber = c.getBoxNumber();
+            String cardNumber = c.getCardNumber();
+            if (!workspaceAuthorizationService.canViewSensitiveCustomerFields()) {
+                boxNumber = PiiMaskingUtil.maskPhone(boxNumber);
+                cardNumber = PiiMaskingUtil.maskPhone(cardNumber);
+            }
 
             return new WorkspaceCustomerDTO(
                     c.getCustomerId(),
@@ -173,8 +219,8 @@ public class WorkspaceController {
                     paymentStatus,
                     balanceDue,
                     c.getConnectionType(),
-                    c.getBoxNumber(),
-                    c.getCardNumber()
+                    boxNumber,
+                    cardNumber
             );
         }).collect(Collectors.toList());
 
@@ -235,7 +281,8 @@ public class WorkspaceController {
     @GetMapping("/providers")
     public ResponseEntity<StandardResponse_Providers> getProviders(
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
-        List<ConnectionProvider> providers = connectionProviderRepository.findAll();
+        List<ConnectionProvider> providers =
+                connectionProviderRepository.findByWorkspaceId(SecurityAuth.requireWorkspaceId());
         List<ProviderSummaryDTO> etagSource = providers.stream()
                 .map(p -> new ProviderSummaryDTO(p.getId(), p.getName()))
                 .collect(Collectors.toList());
@@ -351,4 +398,15 @@ public class WorkspaceController {
     ) {}
 
     public record ProviderSummaryDTO(Long id, String name) {}
+
+    public record WorkspaceInfo(String workspaceId, String businessName) {}
+
+    public record UpdateBusinessNameRequest(String businessName) {}
+
+    public record StandardResponse_WorkspaceInfo(
+            LocalDateTime timestamp,
+            String status,
+            String error,
+            WorkspaceInfo data
+    ) {}
 }

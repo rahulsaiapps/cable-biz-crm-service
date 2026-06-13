@@ -8,6 +8,8 @@ import com.cablepulse.repository.ConnectionProviderRepository;
 import com.cablepulse.repository.EmployeeRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
 import com.cablepulse.testsupport.TestDatabaseCleaner;
+import com.cablepulse.testsupport.TestWorkspaceSupport;
+import com.cablepulse.repository.WorkspaceRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,6 +65,12 @@ class PlanControllerApiTest {
     private TestDatabaseCleaner testDatabaseCleaner;
 
     @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private TestWorkspaceSupport workspaceSupport;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @MockBean
@@ -75,9 +83,10 @@ class PlanControllerApiTest {
     void setUp() throws Exception {
         e2eId = UUID.randomUUID().toString();
         sessionId = UUID.randomUUID().toString();
-        testDatabaseCleaner.wipeCoreWorkspaceData();
-        connectionProviderRepository.save(new ConnectionProvider(PROVIDER_AIRTEL));
-        connectionProviderRepository.save(new ConnectionProvider(PROVIDER_JIO));
+        testDatabaseCleaner.wipeAndSeedDefaultWorkspace(
+                workspaceRepository, employeeRepository, workspaceSupport);
+        connectionProviderRepository.save(workspaceSupport.provider(PROVIDER_AIRTEL));
+        connectionProviderRepository.save(workspaceSupport.provider(PROVIDER_JIO));
         mockOwnerToken();
     }
 
@@ -138,7 +147,8 @@ class PlanControllerApiTest {
                                     """))
                     .andExpect(status().isCreated());
 
-            var plans = globalPlanRepository.findByProvider_Name(PROVIDER_AIRTEL);
+            var plans = globalPlanRepository.findByProvider_NameWithProvider(
+                    TestWorkspaceSupport.WORKSPACE_ID, PROVIDER_AIRTEL);
             assertThat(plans).hasSize(1);
             assertThat(plans.get(0).getChannelsText()).isNull();
             assertThat(plans.get(0).getHd()).isFalse();
@@ -419,12 +429,14 @@ class PlanControllerApiTest {
 
         Employee collectionBoy =
                 new Employee("collection-boy-uid", "Field Agent", EmployeeRole.COLLECTION_BOY);
+        collectionBoy.setWorkspaceId(TestWorkspaceSupport.WORKSPACE_ID);
         employeeRepository.save(collectionBoy);
     }
 
     private GlobalPlan seedPlan(
             String name, String providerName, int price, String channelsText) {
-        ConnectionProvider provider = connectionProviderRepository.findByName(providerName)
+        ConnectionProvider provider = connectionProviderRepository
+                .findByWorkspaceIdAndNameIgnoreCase(TestWorkspaceSupport.WORKSPACE_ID, providerName)
                 .orElseThrow();
         GlobalPlan plan = new GlobalPlan();
         plan.setPlanId("plan-" + UUID.randomUUID());
@@ -432,6 +444,7 @@ class PlanControllerApiTest {
         plan.setMonthlyRate(BigDecimal.valueOf(price));
         plan.setChannelsText(channelsText);
         plan.setProvider(provider);
+        plan.setWorkspaceId(TestWorkspaceSupport.WORKSPACE_ID);
         return globalPlanRepository.save(plan);
     }
 

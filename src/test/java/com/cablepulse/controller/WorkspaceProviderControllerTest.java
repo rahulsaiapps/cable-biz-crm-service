@@ -1,6 +1,9 @@
 package com.cablepulse.controller;
 
 import com.cablepulse.repository.ConnectionProviderRepository;
+import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.repository.WorkspaceRepository;
+import com.cablepulse.testsupport.TestWorkspaceSupport;
 import com.cablepulse.repository.TerritoryRepository;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
@@ -38,6 +41,15 @@ class WorkspaceProviderControllerTest {
     @Autowired
     private TerritoryRepository territoryRepository;
 
+    @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private EmployeeRepository employeeRepository;
+
+    @Autowired
+    private TestWorkspaceSupport workspaceSupport;
+
     @MockBean
     private FirebaseAuth firebaseAuth;
 
@@ -50,6 +62,10 @@ class WorkspaceProviderControllerTest {
         sessionId = UUID.randomUUID().toString();
         connectionProviderRepository.deleteAll();
         territoryRepository.deleteAll();
+        workspaceRepository.deleteAll();
+        employeeRepository.deleteAll();
+        workspaceSupport.seedDefaultWorkspace();
+        employeeRepository.save(workspaceSupport.ownerEmployee());
 
         FirebaseToken firebaseToken = mock(FirebaseToken.class);
         when(firebaseToken.getUid()).thenReturn("owner-uid");

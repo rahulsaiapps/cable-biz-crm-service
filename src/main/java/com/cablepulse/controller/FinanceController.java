@@ -20,7 +20,6 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/finance")
-@PreAuthorize("hasRole('OWNER')")
 public class FinanceController {
 
     private final DailyLedgerService dailyLedgerService;
@@ -32,6 +31,7 @@ public class FinanceController {
     }
 
     @GetMapping("/daily-ledger")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<StandardResponse_DailyLedgerBook> getDailyLedger(
             @RequestParam("targetDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate targetDate,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
@@ -43,6 +43,7 @@ public class FinanceController {
     }
 
     @PostMapping("/daily-ledger/transactions")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<StandardResponse_Void> recordDailyTransaction(
             @RequestBody RecordDailyTransactionRequestDto request,
             @RequestHeader("X-E2E-ID") UUID e2eId,
@@ -61,6 +62,7 @@ public class FinanceController {
     }
 
     @GetMapping("/metrics")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<FinanceMetricsDTO> getFinanceMetrics(
             @RequestParam(value = "interval", defaultValue = "6M") String interval,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
@@ -69,6 +71,7 @@ public class FinanceController {
     }
 
     @GetMapping("/expenses")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<List<ExpenseDistributionItemDTO>> getExpenseDistribution(
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
         List<ExpenseDistributionItemDTO> items = financeAnalyticsService.getExpenseDistribution();
@@ -76,6 +79,7 @@ public class FinanceController {
     }
 
     @GetMapping("/performance")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<List<MonthlyPerformanceDTO>> getMonthlyPerformance(
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
         List<MonthlyPerformanceDTO> items = financeAnalyticsService.getMonthlyPerformance();
@@ -83,6 +87,7 @@ public class FinanceController {
     }
 
     @GetMapping("/disbursements")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<List<DisbursementDTO>> getDisbursements(
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
         List<DisbursementDTO> items = financeAnalyticsService.getRecentDisbursements();
@@ -90,6 +95,7 @@ public class FinanceController {
     }
 
     @GetMapping("/health")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<FinanceHealthDTO> getFinanceHealth(
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
         FinanceHealthDTO health = financeAnalyticsService.getSystemHealth();

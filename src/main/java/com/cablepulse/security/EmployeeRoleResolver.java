@@ -11,13 +11,11 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
- * Single source of truth for mapping Firebase tokens to Spring Security roles.
- * Unknown or unprovisioned users receive {@link EmployeeRole#COLLECTION_BOY} — never OWNER.
+ * Maps authenticated users to Spring Security roles. API authorization always
+ * uses the persisted {@code employees} row — never Firebase custom claims.
  */
 @Component
 public class EmployeeRoleResolver {
@@ -34,39 +32,15 @@ public class EmployeeRoleResolver {
         this.employeeRepository = employeeRepository;
     }
 
+    /** Used only during token-swap when provisioning/reconciling the employee row. */
     public List<GrantedAuthority> resolveAuthorities(FirebaseToken decodedToken) {
-        Map<String, Object> claims = decodedToken.getClaims();
-        List<GrantedAuthority> authorities = new ArrayList<>();
-
-        if (claims.containsKey("role")) {
-            mapClaimRole(String.valueOf(claims.get("role")), authorities);
-        }
-        if (Boolean.TRUE.equals(claims.get("owner"))) {
-            addRoleIfMissing(authorities, EmployeeRole.OWNER);
-        }
-        if (Boolean.TRUE.equals(claims.get("collection_boy"))) {
-            addRoleIfMissing(authorities, EmployeeRole.COLLECTION_BOY);
-        }
-
-        if (authorities.isEmpty()) {
-            EmployeeRole role = resolveEmployeeRole(decodedToken);
-            authorities.add(new SimpleGrantedAuthority("ROLE_" + role.name()));
-        }
-
-        return authorities;
+        EmployeeRole role = resolveEmployeeRole(decodedToken);
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
     public String resolveRoleClaim(FirebaseToken decodedToken) {
-        List<GrantedAuthority> authorities = resolveAuthorities(decodedToken);
-        for (GrantedAuthority authority : authorities) {
-            if ("ROLE_OWNER".equals(authority.getAuthority())) {
-                return "ROLE_OWNER";
-            }
-        }
-        if (!authorities.isEmpty()) {
-            return authorities.get(0).getAuthority();
-        }
-        return "ROLE_COLLECTION_BOY";
+        EmployeeRole role = resolveEmployeeRole(decodedToken);
+        return "ROLE_" + role.name();
     }
 
     /** Resolves the role claim for a persisted Firebase UID (refresh-token flow). */
@@ -105,22 +79,6 @@ public class EmployeeRoleResolver {
                     decodedToken.getUid(),
                     ex.getMessage());
             return EmployeeRole.COLLECTION_BOY;
-        }
-    }
-
-    private static void mapClaimRole(String rawRole, List<GrantedAuthority> authorities) {
-        String role = rawRole.toUpperCase();
-        if (role.equals("OWNER") || role.equals("ROLE_OWNER")) {
-            addRoleIfMissing(authorities, EmployeeRole.OWNER);
-        } else if (role.equals("COLLECTION_BOY") || role.equals("ROLE_COLLECTION_BOY")) {
-            addRoleIfMissing(authorities, EmployeeRole.COLLECTION_BOY);
-        }
-    }
-
-    private static void addRoleIfMissing(List<GrantedAuthority> authorities, EmployeeRole role) {
-        String authority = "ROLE_" + role.name();
-        if (authorities.stream().noneMatch(a -> a.getAuthority().equals(authority))) {
-            authorities.add(new SimpleGrantedAuthority(authority));
         }
     }
 }

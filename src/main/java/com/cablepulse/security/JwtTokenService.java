@@ -19,6 +19,7 @@ public class JwtTokenService {
     public static final String TYPE_ACCESS = "access";
     public static final String TYPE_REFRESH = "refresh";
     public static final String CLAIM_ROLE = "role";
+    public static final String CLAIM_WORKSPACE_ID = "workspace_id";
 
     public static final long ACCESS_TTL_SECONDS = 15 * 60L;
     public static final long REFRESH_TTL_SECONDS = 30L * 24 * 60 * 60;
@@ -34,13 +35,14 @@ public class JwtTokenService {
         this.signingKey = Keys.hmacShaKeyFor(keyBytes);
     }
 
-    public String createAccessToken(String userId, String role) {
+    public String createAccessToken(String userId, String role, String workspaceId) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + ACCESS_TTL_SECONDS * 1000L);
         return Jwts.builder()
                 .subject(userId)
                 .claim(CLAIM_TYPE, TYPE_ACCESS)
                 .claim(CLAIM_ROLE, role)
+                .claim(CLAIM_WORKSPACE_ID, workspaceId)
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(signingKey)

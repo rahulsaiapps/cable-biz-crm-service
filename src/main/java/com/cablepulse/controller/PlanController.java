@@ -4,6 +4,7 @@ import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.model.GlobalPlan;
 import com.cablepulse.repository.GlobalPlanRepository;
 import com.cablepulse.service.PlanService;
+import com.cablepulse.security.SecurityAuth;
 import com.cablepulse.util.EtagSupport;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
@@ -33,9 +34,10 @@ public class PlanController {
             @RequestParam(value = "providerName", required = false) String providerName,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
 
+        String workspaceId = SecurityAuth.requireWorkspaceId();
         List<GlobalPlan> plans = (providerName == null || providerName.isBlank())
-                ? globalPlanRepository.findAllWithProvider()
-                : globalPlanRepository.findByProvider_NameWithProvider(providerName.trim());
+                ? globalPlanRepository.findAllWithProviderByWorkspaceId(workspaceId)
+                : globalPlanRepository.findByProvider_NameWithProvider(workspaceId, providerName.trim());
 
         List<PlanItemDTO> dtos = plans.stream()
                 .map(PlanController::toPlanItemDto)

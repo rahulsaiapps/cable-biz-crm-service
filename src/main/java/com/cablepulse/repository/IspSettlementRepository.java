@@ -9,5 +9,6 @@ import java.util.List;
 @Repository
 public interface IspSettlementRepository extends JpaRepository<IspSettlement, Long> {
 
-    List<IspSettlement> findByTransactionDateBetween(LocalDateTime start, LocalDateTime end);
+    List<IspSettlement> findByWorkspaceIdAndTransactionDateBetween(
+            String workspaceId, LocalDateTime start, LocalDateTime end);
 }

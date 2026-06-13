@@ -80,7 +80,7 @@ public class TransactionController {
     }
 
     @GetMapping("/api/v1/transactions/daily-summary")
-    @PreAuthorize("hasRole('OWNER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<StandardResponse_DailyCashSummaryData> getDailySummary(
             @RequestParam("targetDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate targetDate,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {

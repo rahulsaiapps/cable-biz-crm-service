@@ -177,6 +177,7 @@ public class CustomerController {
     }
 
     @PutMapping("/{id}/subscription")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_CustomerProfile> updateSubscription(
             @PathVariable("id") String id,
             @Valid @RequestBody UpdateSubscriptionRequestDto request,
@@ -250,11 +251,14 @@ public class CustomerController {
             @RequestParam(value = "block", required = false) String block,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
 
+        String workspaceId = com.cablepulse.security.SecurityAuth.requireWorkspaceId();
         List<Customer> customers;
         if (block != null && !block.trim().isEmpty()) {
-            customers = customerRepository.findByFullNameContainingIgnoreCaseAndBlockNameContainingIgnoreCase(name, block);
+            customers = customerRepository
+                    .findByFullNameContainingIgnoreCaseAndBlockNameContainingIgnoreCaseAndWorkspaceId(
+                            name, block, workspaceId);
         } else {
-            customers = customerRepository.findByFullNameContainingIgnoreCase(name);
+            customers = customerRepository.findByFullNameContainingIgnoreCaseAndWorkspaceId(name, workspaceId);
         }
 
         customers = workspaceAuthorizationService.filterAccessibleCustomers(customers);

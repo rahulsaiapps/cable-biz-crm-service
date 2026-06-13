@@ -38,8 +38,10 @@ public interface CustomerLedgerRepository extends JpaRepository<CustomerLedger, 
             WHERE l.billingYear = :year
               AND UPPER(l.billingMonth) IN :monthNames
               AND l.dueAmount > 0
+              AND l.customer.workspaceId = :workspaceId
             """)
     BigDecimal sumDueAmountForBillingPeriod(
+            @Param("workspaceId") String workspaceId,
             @Param("year") int year,
             @Param("monthNames") Collection<String> monthNames);
 }

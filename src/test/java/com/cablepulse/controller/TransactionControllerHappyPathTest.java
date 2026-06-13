@@ -3,8 +3,12 @@ package com.cablepulse.controller;
 import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.infrastructure.WebHeaderInterceptor;
 import com.cablepulse.model.Customer;
+import com.cablepulse.model.Employee;
 import com.cablepulse.model.GlobalPlan;
 import com.cablepulse.model.Territory;
+import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.repository.WorkspaceRepository;
+import com.cablepulse.testsupport.TestWorkspaceSupport;
 import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.TerritoryRepository;
@@ -59,6 +63,15 @@ public class TransactionControllerHappyPathTest {
     @MockBean
     private DailyLedgerService dailyLedgerService;
 
+    @Autowired
+    private EmployeeRepository employeeRepository;
+
+    @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private TestWorkspaceSupport workspaceSupport;
+
     private String e2eId;
     private String sessionId;
 
@@ -66,6 +79,11 @@ public class TransactionControllerHappyPathTest {
     void setUp() throws Exception {
         e2eId = UUID.randomUUID().toString();
         sessionId = UUID.randomUUID().toString();
+
+        workspaceSupport.seedDefaultWorkspace();
+        Employee owner = workspaceSupport.ownerEmployee();
+        owner.setEmployeeId("test-user-id");
+        employeeRepository.save(owner);
 
         FirebaseToken firebaseToken = mock(FirebaseToken.class);
         when(firebaseToken.getUid()).thenReturn("test-user-id");
@@ -76,7 +94,9 @@ public class TransactionControllerHappyPathTest {
     @Test
     void workspaceCustomerFlow_includesOptionalHardwareTrackingFields() throws Exception {
         Territory territory = new Territory("vil_kolamuru_001", "Kolamuru");
+        territory.setWorkspaceId(TestWorkspaceSupport.WORKSPACE_ID);
         GlobalPlan plan = new GlobalPlan("plan-001", "Pro Pack", new BigDecimal("199.00"), "HD");
+        plan.setWorkspaceId(TestWorkspaceSupport.WORKSPACE_ID);
         Customer customer = new Customer(
                 "cust-001",
                 1,
@@ -91,9 +111,11 @@ public class TransactionControllerHappyPathTest {
                 "STB987654",
                 "VC11223344"
         );
+        customer.setWorkspaceId(TestWorkspaceSupport.WORKSPACE_ID);
 
         when(territoryRepository.findById("vil_kolamuru_001")).thenReturn(Optional.of(territory));
-        when(customerRepository.findByTerritoryIdWithPlan("vil_kolamuru_001")).thenReturn(List.of(customer));
+        when(customerRepository.findByTerritoryIdWithPlan(
+                TestWorkspaceSupport.WORKSPACE_ID, "vil_kolamuru_001")).thenReturn(List.of(customer));
         when(customerLedgerRepository.sumDueAmountGroupedByCustomerId(any())).thenReturn(List.of());
 
         mockMvc.perform(get("/api/v1/workspace/customers")

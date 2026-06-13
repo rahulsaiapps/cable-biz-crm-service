@@ -35,7 +35,24 @@ public class EmployeeProfileService {
 
         if (requestDto.email() != null) {
             String email = requestDto.email().trim();
-            employee.setEmail(email.isEmpty() ? null : email);
+            if (email.isEmpty()) {
+                employee.setEmail(null);
+            } else {
+                employeeRepository.findByEmailIgnoreCaseAndWorkspaceId(email, employee.getWorkspaceId())
+                        .filter(existing -> !existing.getEmployeeId().equals(employee.getEmployeeId()))
+                        .ifPresent(existing -> {
+                            throw new IllegalArgumentException(
+                                    "This email is already registered to another team member in your workspace.");
+                        });
+                employeeRepository.findByEmailIgnoreCase(email)
+                        .filter(existing -> !existing.getEmployeeId().equals(employee.getEmployeeId()))
+                        .filter(existing -> !employee.getWorkspaceId().equals(existing.getWorkspaceId()))
+                        .ifPresent(existing -> {
+                            throw new IllegalArgumentException(
+                                    "This email is already registered to another Cable Pulse account.");
+                        });
+                employee.setEmail(email);
+            }
         }
 
         if (requestDto.description() != null) {

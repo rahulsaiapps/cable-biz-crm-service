@@ -29,6 +29,9 @@ public class IspSettlement {
     @Column(nullable = false)
     private LocalDateTime transactionDate;
 
+    @Column(name = "workspace_id", nullable = false)
+    private String workspaceId;
+
     public IspSettlement() {
     }
 
@@ -95,5 +98,13 @@ public class IspSettlement {
 
     public void setTransactionDate(LocalDateTime transactionDate) {
         this.transactionDate = transactionDate;
+    }
+
+    public String getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+        this.workspaceId = workspaceId;
     }
 }

@@ -5,6 +5,7 @@ import com.cablepulse.model.ConnectionProvider;
 import com.cablepulse.model.GlobalPlan;
 import com.cablepulse.repository.ConnectionProviderRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
+import com.cablepulse.security.SecurityAuth;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,7 +28,9 @@ public class PlanService {
 
     @Transactional
     public GlobalPlan createPlan(CreatePlanRequestDto requestDto) {
-        ConnectionProvider provider = connectionProviderRepository.findByName(requestDto.provider().trim())
+        String workspaceId = SecurityAuth.requireWorkspaceId();
+        ConnectionProvider provider = connectionProviderRepository
+                .findByWorkspaceIdAndNameIgnoreCase(workspaceId, requestDto.provider().trim())
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Provider category not found: " + requestDto.provider()));
 
@@ -36,6 +39,7 @@ public class PlanService {
         plan.setPlanName(requestDto.name().trim());
         plan.setMonthlyRate(BigDecimal.valueOf(requestDto.price()));
         plan.setProvider(provider);
+        plan.setWorkspaceId(workspaceId);
 
         if (requestDto.channelsText() != null) {
             String channelsText = requestDto.channelsText().trim();
@@ -51,7 +55,8 @@ public class PlanService {
 
     @Transactional
     public void deletePlan(String planId) {
-        GlobalPlan plan = globalPlanRepository.findById(planId)
+        String workspaceId = SecurityAuth.requireWorkspaceId();
+        GlobalPlan plan = globalPlanRepository.findByPlanIdAndWorkspaceId(planId, workspaceId)
                 .orElseThrow(() -> new EntityNotFoundException("Plan not found: " + planId));
         globalPlanRepository.delete(plan);
     }

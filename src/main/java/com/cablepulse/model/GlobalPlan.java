@@ -23,6 +23,9 @@ public class GlobalPlan {
     @Column(name = "is_hd")
     private Boolean hd = false;
 
+    @Column(name = "workspace_id", nullable = false)
+    private String workspaceId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "provider_id")
     private ConnectionProvider provider;
@@ -82,5 +85,13 @@ public class GlobalPlan {
 
     public void setHd(Boolean hd) {
         this.hd = hd;
+    }
+
+    public String getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+        this.workspaceId = workspaceId;
     }
 }

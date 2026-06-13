@@ -8,6 +8,7 @@ import com.cablepulse.model.Territory;
 import com.cablepulse.model.TerritoryBlock;
 import com.cablepulse.repository.ConnectionProviderRepository;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.security.SecurityAuth;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,10 +28,6 @@ public class WorkspaceProviderService {
         this.territoryRepository = territoryRepository;
     }
 
-    /**
-     * Territory locations send {@code location_name} (+ optional {@code blocks}).
-     * ISP plan categories send {@code name} only.
-     */
     @Transactional
     public Object createWorkspaceProvider(ProviderRequestDto requestDto) {
         if (requestDto.isTerritoryRequest()) {
@@ -41,30 +38,33 @@ public class WorkspaceProviderService {
 
     @Transactional
     public ConnectionProvider createProviderCategory(ProviderRequestDto requestDto) {
+        String workspaceId = SecurityAuth.requireWorkspaceId();
         if (requestDto.getName() == null || requestDto.getName().isBlank()) {
             throw new IllegalArgumentException("Provider name is required and cannot be blank");
         }
 
         String name = requestDto.getName().trim();
 
-        var existing = connectionProviderRepository.findByName(name);
+        var existing = connectionProviderRepository.findByWorkspaceIdAndNameIgnoreCase(workspaceId, name);
         if (existing.isPresent()) {
             throw new ProviderCategoryAlreadyExistsException(existing.get());
         }
-        return connectionProviderRepository.save(new ConnectionProvider(name));
+        return connectionProviderRepository.save(new ConnectionProvider(workspaceId, name));
     }
 
     @Transactional
     public Territory createTerritoryLocation(ProviderRequestDto requestDto) {
+        String workspaceId = SecurityAuth.requireWorkspaceId();
         String locationName = requestDto.getLocationName().trim();
 
-        territoryRepository.findByLocationNameIgnoreCase(locationName)
+        territoryRepository.findByWorkspaceIdAndLocationNameIgnoreCase(workspaceId, locationName)
                 .ifPresent(existing -> {
                     throw new TerritoryAlreadyExistsException(existing);
                 });
 
         String territoryId = "ter_" + UUID.randomUUID().toString().replace("-", "");
         Territory territory = new Territory(territoryId, locationName);
+        territory.setWorkspaceId(workspaceId);
 
         List<String> blocks = requestDto.getBlocks();
         if (blocks != null) {

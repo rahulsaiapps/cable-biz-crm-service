@@ -3,6 +3,8 @@ package com.cablepulse.controller;
 import com.cablepulse.model.Employee;
 import com.cablepulse.model.EmployeeRole;
 import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.repository.WorkspaceRepository;
+import com.cablepulse.testsupport.TestWorkspaceSupport;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +37,12 @@ class EmployeeProfileControllerTest {
     @Autowired
     private EmployeeRepository employeeRepository;
 
+    @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private TestWorkspaceSupport workspaceSupport;
+
     @MockBean
     private FirebaseAuth firebaseAuth;
 
@@ -46,6 +54,8 @@ class EmployeeProfileControllerTest {
         e2eId = UUID.randomUUID().toString();
         sessionId = UUID.randomUUID().toString();
         employeeRepository.deleteAll();
+        workspaceRepository.deleteAll();
+        workspaceSupport.seedDefaultWorkspace();
 
         FirebaseToken firebaseToken = mock(FirebaseToken.class);
         when(firebaseToken.getUid()).thenReturn("firebase-uid-123");
@@ -58,6 +68,7 @@ class EmployeeProfileControllerTest {
         Employee employee = new Employee("firebase-uid-123", "Ramesh Kumar", EmployeeRole.COLLECTION_BOY);
         employee.setEmail("old@example.com");
         employee.setDescription("Old caption");
+        employee.setWorkspaceId(TestWorkspaceSupport.WORKSPACE_ID);
         employeeRepository.save(employee);
 
         mockMvc.perform(patch("/api/v1/employees/profile")
@@ -99,5 +110,19 @@ class EmployeeProfileControllerTest {
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value("ERROR"));
+    }
+
+    @Test
+    void deleteProfile_rejectsOwner() throws Exception {
+        Employee owner = workspaceSupport.ownerEmployee();
+        owner.setEmployeeId("firebase-uid-123");
+        employeeRepository.save(owner);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/employees/profile")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("Owner")));
     }
 }

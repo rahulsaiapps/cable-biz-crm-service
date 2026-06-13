@@ -3,7 +3,9 @@ package com.cablepulse.controller;
 import com.cablepulse.model.Employee;
 import com.cablepulse.security.EmployeeRoleResolver;
 import com.cablepulse.security.JwtTokenService;
+import com.cablepulse.security.WorkspaceAuthorizationService;
 import com.cablepulse.service.EmployeeReconciliationService;
+import com.cablepulse.service.WorkspaceService;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import io.jsonwebtoken.Claims;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -28,6 +31,8 @@ public class AuthController {
     private final EmployeeReconciliationService employeeReconciliationService;
     private final EmployeeRoleResolver employeeRoleResolver;
     private final JwtTokenService jwtTokenService;
+    private final WorkspaceService workspaceService;
+    private final WorkspaceAuthorizationService workspaceAuthorizationService;
     private final boolean allowJwtFallback;
 
     public AuthController(
@@ -35,11 +40,15 @@ public class AuthController {
             EmployeeReconciliationService employeeReconciliationService,
             EmployeeRoleResolver employeeRoleResolver,
             JwtTokenService jwtTokenService,
+            WorkspaceService workspaceService,
+            WorkspaceAuthorizationService workspaceAuthorizationService,
             @Value("${cablepulse.security.allow-jwt-fallback:false}") boolean allowJwtFallback) {
         this.firebaseAuth = firebaseAuth;
         this.employeeReconciliationService = employeeReconciliationService;
         this.employeeRoleResolver = employeeRoleResolver;
         this.jwtTokenService = jwtTokenService;
+        this.workspaceService = workspaceService;
+        this.workspaceAuthorizationService = workspaceAuthorizationService;
         this.allowJwtFallback = allowJwtFallback;
     }
 
@@ -52,22 +61,35 @@ public class AuthController {
         try {
             FirebaseToken decodedToken = firebaseAuth.verifyIdToken(request.firebaseIdToken());
             String uid = decodedToken.getUid();
-            String name = decodedToken.getName();
-
-            String fullName = (name != null && !name.isBlank()) ? name.trim() : "Operator";
+            String fullName = (decodedToken.getName() != null && !decodedToken.getName().isBlank())
+                    ? decodedToken.getName().trim()
+                    : "Operator";
             String role = "ROLE_COLLECTION_BOY";
+            String businessName = null;
 
+            Employee employee = null;
             try {
-                Employee employee = employeeReconciliationService.resolveEmployee(decodedToken);
-                if (employee != null && employee.getFullName() != null && !employee.getFullName().isBlank()) {
+                employee = employeeReconciliationService.resolveEmployee(decodedToken);
+                if (employee == null) {
+                    return ResponseEntity.status(403).body(
+                            errorResponse("No workspace account found for this Google sign-in. Ask your operator to invite you."));
+                }
+                if (employee.getFullName() != null && !employee.getFullName().isBlank()) {
                     fullName = employee.getFullName();
                 }
-                role = employeeRoleResolver.resolveRoleClaim(decodedToken);
+                String workspaceId = employee.getWorkspaceId();
+                if (workspaceId != null && !workspaceId.isBlank()) {
+                    businessName = workspaceService.businessNameFor(workspaceId);
+                }
+                role = employeeRoleResolver.resolveRoleForUserId(uid);
             } catch (Exception reconciliationError) {
-                logger.warn("Token-swap reconciliation degraded for uid={}", uid);
+                logger.warn("Token-swap reconciliation failed for uid={}", uid);
+                return ResponseEntity.status(503).body(
+                        errorResponse("Account setup is temporarily unavailable. Please try again."));
             }
 
-            return ResponseEntity.ok(buildTokenResponse(uid, fullName, role, request.firebaseIdToken()));
+            return ResponseEntity.ok(
+                    buildTokenResponse(uid, fullName, role, employee, businessName, request.firebaseIdToken()));
         } catch (Exception e) {
             logger.error("Token-swap failed", e);
             return ResponseEntity.status(401).body(errorResponse("Invalid or expired Firebase token"));
@@ -87,25 +109,40 @@ public class AuthController {
             }
 
             String uid = claims.getSubject();
+            Employee employee = employeeReconciliationService.findEmployeeById(uid).orElse(null);
+            if (employee == null) {
+                return ResponseEntity.status(401).body(
+                        errorResponse("Account no longer exists. Please sign in again."));
+            }
             String role = employeeRoleResolver.resolveRoleForUserId(uid);
-            String fullName = employeeReconciliationService.findEmployeeById(uid)
-                    .map(Employee::getFullName)
-                    .orElse("Operator");
+            String fullName = employee.getFullName() != null && !employee.getFullName().isBlank()
+                    ? employee.getFullName()
+                    : "Operator";
+            String workspaceId = employee.getWorkspaceId();
+            String businessName = workspaceId != null
+                    ? workspaceService.businessNameFor(workspaceId)
+                    : null;
 
-            return ResponseEntity.ok(buildTokenResponse(uid, fullName, role, null));
+            return ResponseEntity.ok(buildTokenResponse(uid, fullName, role, employee, businessName, null));
         } catch (JwtException e) {
             return ResponseEntity.status(401).body(errorResponse("Refresh token expired or invalid"));
         }
     }
 
     private Map<String, Object> buildTokenResponse(
-            String uid, String fullName, String role, String firebaseFallbackToken) {
+            String uid,
+            String fullName,
+            String role,
+            Employee employee,
+            String businessName,
+            String firebaseFallbackToken) {
+        String workspaceId = employee != null ? employee.getWorkspaceId() : null;
         String accessToken;
         String refreshToken;
         boolean usingFirebaseFallback = false;
 
         try {
-            accessToken = jwtTokenService.createAccessToken(uid, role);
+            accessToken = jwtTokenService.createAccessToken(uid, role, workspaceId);
             refreshToken = jwtTokenService.createRefreshToken(uid);
         } catch (Exception jwtError) {
             if (!allowJwtFallback || firebaseFallbackToken == null || firebaseFallbackToken.isBlank()) {
@@ -122,6 +159,21 @@ public class AuthController {
         userProfile.put("userId", uid);
         userProfile.put("fullName", fullName);
         userProfile.put("role", role);
+        if (workspaceId != null) {
+            userProfile.put("workspaceId", workspaceId);
+        }
+        if (businessName != null) {
+            userProfile.put("businessName", businessName);
+        }
+        if (employee != null && employee.getAssignedVillages() != null) {
+            userProfile.put("assignedVillages", employee.getAssignedVillages());
+        }
+        if (employee != null) {
+            List<String> territoryIds = workspaceAuthorizationService.resolveTerritoryIdsForEmployee(employee);
+            if (!territoryIds.isEmpty()) {
+                userProfile.put("assignedTerritoryIds", territoryIds);
+            }
+        }
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("accessToken", accessToken);

@@ -9,6 +9,7 @@ import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.DailyExpenseRepository;
 import com.cablepulse.repository.DailyTransactionRepository;
 import com.cablepulse.repository.IspSettlementRepository;
+import com.cablepulse.security.SecurityAuth;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,7 +64,11 @@ public class FinanceAnalyticsService {
 
     @Transactional(readOnly = true)
     public List<ExpenseDistributionItemDTO> getExpenseDistribution() {
-        List<DailyExpense> expenses = dailyExpenseRepository.findAll();
+        String workspaceId = SecurityAuth.requireWorkspaceId();
+        LocalDateTime start = LocalDate.now().minusYears(5).atStartOfDay();
+        LocalDateTime end = LocalDate.now().atTime(LocalTime.MAX);
+        List<DailyExpense> expenses =
+                dailyExpenseRepository.findByWorkspaceIdAndLoggedAtBetween(workspaceId, start, end);
         if (expenses.isEmpty()) {
             return List.of(
                     new ExpenseDistributionItemDTO("Cable Wire Maintenance", 60.0, 0xFF1A3A6B),
@@ -117,7 +122,10 @@ public class FinanceAnalyticsService {
 
     @Transactional(readOnly = true)
     public List<DisbursementDTO> getRecentDisbursements() {
-        return ispSettlementRepository.findAll().stream()
+        String workspaceId = SecurityAuth.requireWorkspaceId();
+        LocalDateTime start = LocalDate.now().minusYears(2).atStartOfDay();
+        LocalDateTime end = LocalDate.now().atTime(LocalTime.MAX);
+        return ispSettlementRepository.findByWorkspaceIdAndTransactionDateBetween(workspaceId, start, end).stream()
                 .sorted(Comparator.comparing(IspSettlement::getTransactionDate).reversed())
                 .limit(10)
                 .map(s -> new DisbursementDTO(
@@ -131,13 +139,14 @@ public class FinanceAnalyticsService {
 
     @Transactional(readOnly = true)
     public FinanceHealthDTO getSystemHealth() {
-        long activeCustomers = customerRepository.count();
+        long activeCustomers = customerRepository.countByWorkspaceId(SecurityAuth.requireWorkspaceId());
         return new FinanceHealthDTO((int) activeCustomers, 99.9);
     }
 
     @Transactional(readOnly = true)
     public int estimateAlertAudienceSize(String region, String block, List<String> customerTypes) {
-        List<com.cablepulse.model.Customer> customers = customerRepository.findAll();
+        List<com.cablepulse.model.Customer> customers =
+                customerRepository.findByWorkspaceId(SecurityAuth.requireWorkspaceId());
         long count = customers.stream()
                 .filter(c -> region == null || region.isBlank()
                         || (c.getTerritory() != null && region.equalsIgnoreCase(c.getTerritory().getLocationName())))
@@ -149,19 +158,22 @@ public class FinanceAnalyticsService {
     }
 
     private BigDecimal sumTransactionsBetween(LocalDateTime start, LocalDateTime end) {
-        return dailyTransactionRepository.findByRecordedAtBetween(start, end).stream()
+        return dailyTransactionRepository
+                .findByWorkspaceIdAndRecordedAtBetween(SecurityAuth.requireWorkspaceId(), start, end).stream()
                 .map(DailyTransaction::getAmountCollected)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private BigDecimal sumExpensesBetween(LocalDateTime start, LocalDateTime end) {
-        return dailyExpenseRepository.findByLoggedAtBetween(start, end).stream()
+        return dailyExpenseRepository
+                .findByWorkspaceIdAndLoggedAtBetween(SecurityAuth.requireWorkspaceId(), start, end).stream()
                 .map(DailyExpense::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private BigDecimal sumSettlementsBetween(LocalDateTime start, LocalDateTime end) {
-        return ispSettlementRepository.findByTransactionDateBetween(start, end).stream()
+        return ispSettlementRepository
+                .findByWorkspaceIdAndTransactionDateBetween(SecurityAuth.requireWorkspaceId(), start, end).stream()
                 .map(IspSettlement::getAmountPaid)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }

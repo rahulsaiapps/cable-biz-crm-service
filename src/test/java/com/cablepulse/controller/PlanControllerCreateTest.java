@@ -6,7 +6,10 @@ import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.DailyTransactionRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
+import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.repository.WorkspaceRepository;
 import com.cablepulse.testsupport.TestDatabaseCleaner;
+import com.cablepulse.testsupport.TestWorkspaceSupport;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,6 +57,15 @@ class PlanControllerCreateTest {
     @Autowired
     private TestDatabaseCleaner testDatabaseCleaner;
 
+    @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private EmployeeRepository employeeRepository;
+
+    @Autowired
+    private TestWorkspaceSupport workspaceSupport;
+
     @MockBean
     private FirebaseAuth firebaseAuth;
 
@@ -64,8 +76,9 @@ class PlanControllerCreateTest {
     void setUp() throws Exception {
         e2eId = UUID.randomUUID().toString();
         sessionId = UUID.randomUUID().toString();
-        testDatabaseCleaner.wipeCoreWorkspaceData();
-        connectionProviderRepository.save(new ConnectionProvider("Skynet Cable Networks"));
+        testDatabaseCleaner.wipeAndSeedDefaultWorkspace(
+                workspaceRepository, employeeRepository, workspaceSupport);
+        connectionProviderRepository.save(workspaceSupport.provider("Skynet Cable Networks"));
 
         FirebaseToken firebaseToken = mock(FirebaseToken.class);
         when(firebaseToken.getUid()).thenReturn("owner-uid");
@@ -93,7 +106,8 @@ class PlanControllerCreateTest {
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.createdPlanId").exists());
 
-        var plans = globalPlanRepository.findByProvider_Name("Skynet Cable Networks");
+        var plans = globalPlanRepository.findByProvider_NameWithProvider(
+                TestWorkspaceSupport.WORKSPACE_ID, "Skynet Cable Networks");
         assertThat(plans).hasSize(1);
         assertThat(plans.get(0).getChannelsText()).isEqualTo("120+ Channels, HD Support");
         assertThat(plans.get(0).getHd()).isTrue();
@@ -115,7 +129,8 @@ class PlanControllerCreateTest {
                                 """))
                 .andExpect(status().isCreated());
 
-        var plans = globalPlanRepository.findByProvider_Name("Skynet Cable Networks");
+        var plans = globalPlanRepository.findByProvider_NameWithProvider(
+                TestWorkspaceSupport.WORKSPACE_ID, "Skynet Cable Networks");
         assertThat(plans).hasSize(1);
         assertThat(plans.get(0).getChannelsText()).isNull();
         assertThat(plans.get(0).getHd()).isFalse();

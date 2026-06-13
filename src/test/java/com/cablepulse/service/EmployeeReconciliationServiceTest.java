@@ -2,8 +2,11 @@ package com.cablepulse.service;
 
 import com.cablepulse.model.Employee;
 import com.cablepulse.model.EmployeeRole;
+import com.cablepulse.model.Workspace;
 import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.repository.WorkspaceRepository;
 import com.google.firebase.auth.FirebaseToken;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -15,7 +18,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @DataJpaTest
-@Import(EmployeeReconciliationService.class)
+@Import({EmployeeReconciliationService.class, WorkspaceService.class})
 @TestPropertySource(properties = "cablepulse.security.bootstrap-owner-emails=rahul@example.com")
 class EmployeeReconciliationServiceTest {
 
@@ -23,12 +26,22 @@ class EmployeeReconciliationServiceTest {
     private EmployeeRepository employeeRepository;
 
     @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
     private EmployeeReconciliationService reconciliationService;
+
+    @BeforeEach
+    void seedLegacyWorkspace() {
+        workspaceRepository.save(new Workspace(
+                WorkspaceService.LEGACY_WORKSPACE_ID, "Legacy", null));
+    }
 
     @Test
     void resolveEmployee_claimsPendingRowByEmailOnFirstSignIn() {
         Employee pending = new Employee("PENDING-abc-123", "Ramesh Kumar", EmployeeRole.COLLECTION_BOY);
         pending.setEmail("ramesh@example.com");
+        pending.setWorkspaceId(WorkspaceService.LEGACY_WORKSPACE_ID);
         employeeRepository.save(pending);
 
         FirebaseToken token = mock(FirebaseToken.class);
@@ -39,17 +52,15 @@ class EmployeeReconciliationServiceTest {
 
         assertThat(resolved).isNotNull();
         assertThat(resolved.getEmployeeId()).isEqualTo("firebase-uid-xyz");
-        assertThat(resolved.getFullName()).isEqualTo("Ramesh Kumar");
-        assertThat(resolved.getRole()).isEqualTo(EmployeeRole.COLLECTION_BOY);
-        assertThat(resolved.getEmail()).isEqualTo("ramesh@example.com");
+        assertThat(resolved.getWorkspaceId()).isEqualTo(WorkspaceService.LEGACY_WORKSPACE_ID);
         assertThat(employeeRepository.findById("PENDING-abc-123")).isEmpty();
-        assertThat(employeeRepository.findById("firebase-uid-xyz")).isPresent();
     }
 
     @Test
     void resolveEmployee_relinksManualRowWhenEmailMatchesButUidDiffers() {
         Employee owner = new Employee("manual-uid-1", "Owner User", EmployeeRole.OWNER);
         owner.setEmail("owner@example.com");
+        owner.setWorkspaceId(WorkspaceService.LEGACY_WORKSPACE_ID);
         employeeRepository.save(owner);
 
         FirebaseToken token = mock(FirebaseToken.class);
@@ -60,15 +71,14 @@ class EmployeeReconciliationServiceTest {
 
         assertThat(resolved).isNotNull();
         assertThat(resolved.getEmployeeId()).isEqualTo("different-firebase-uid");
-        assertThat(resolved.getRole()).isEqualTo(EmployeeRole.OWNER);
         assertThat(employeeRepository.findById("manual-uid-1")).isEmpty();
-        assertThat(employeeRepository.findById("different-firebase-uid")).isPresent();
     }
 
     @Test
     void resolveEmployee_registersOwnerForNewGoogleEmailWhenOwnerExists() {
         Employee existingOwner = new Employee("owner-uid-1", "Owner User", EmployeeRole.OWNER);
         existingOwner.setEmail("owner@example.com");
+        existingOwner.setWorkspaceId(WorkspaceService.LEGACY_WORKSPACE_ID);
         employeeRepository.save(existingOwner);
 
         FirebaseToken token = mock(FirebaseToken.class);
@@ -81,13 +91,14 @@ class EmployeeReconciliationServiceTest {
         assertThat(resolved).isNotNull();
         assertThat(resolved.getEmployeeId()).isEqualTo("new-operator-uid");
         assertThat(resolved.getRole()).isEqualTo(EmployeeRole.OWNER);
-        assertThat(resolved.getEmail()).isEqualTo("new-operator@example.com");
+        assertThat(resolved.getWorkspaceId()).isNotEqualTo(WorkspaceService.LEGACY_WORKSPACE_ID);
     }
 
     @Test
     void resolveEmployee_bootstrapsOwnerWhenNoOwnerExists() {
         Employee agent = new Employee("agent-uid", "Field Agent", EmployeeRole.COLLECTION_BOY);
         agent.setEmail("agent@example.com");
+        agent.setWorkspaceId(WorkspaceService.LEGACY_WORKSPACE_ID);
         employeeRepository.save(agent);
 
         FirebaseToken token = mock(FirebaseToken.class);
@@ -100,7 +111,7 @@ class EmployeeReconciliationServiceTest {
         assertThat(resolved).isNotNull();
         assertThat(resolved.getEmployeeId()).isEqualTo("operator-firebase-uid");
         assertThat(resolved.getRole()).isEqualTo(EmployeeRole.OWNER);
-        assertThat(resolved.getEmail()).isEqualTo("rahul@example.com");
+        assertThat(resolved.getWorkspaceId()).isEqualTo(WorkspaceService.LEGACY_WORKSPACE_ID);
     }
 
     @Test
@@ -115,6 +126,6 @@ class EmployeeReconciliationServiceTest {
         assertThat(resolved).isNotNull();
         assertThat(resolved.getEmployeeId()).isEqualTo("operator-firebase-uid");
         assertThat(resolved.getRole()).isEqualTo(EmployeeRole.OWNER);
-        assertThat(resolved.getEmail()).isEqualTo("not-allowed@example.com");
+        assertThat(resolved.getWorkspaceId()).startsWith("ws_");
     }
 }

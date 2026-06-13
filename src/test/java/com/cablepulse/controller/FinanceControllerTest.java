@@ -1,5 +1,8 @@
 package com.cablepulse.controller;
 
+import com.cablepulse.repository.EmployeeRepository;
+import com.cablepulse.repository.WorkspaceRepository;
+import com.cablepulse.testsupport.TestWorkspaceSupport;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +30,15 @@ class FinanceControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private EmployeeRepository employeeRepository;
+
+    @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private TestWorkspaceSupport workspaceSupport;
+
     @MockBean
     private FirebaseAuth firebaseAuth;
 
@@ -37,6 +49,9 @@ class FinanceControllerTest {
     void setUp() throws Exception {
         e2eId = UUID.randomUUID().toString();
         sessionId = UUID.randomUUID().toString();
+
+        workspaceSupport.seedDefaultWorkspace();
+        employeeRepository.save(workspaceSupport.ownerEmployee());
 
         FirebaseToken firebaseToken = mock(FirebaseToken.class);
         when(firebaseToken.getUid()).thenReturn("owner-uid");

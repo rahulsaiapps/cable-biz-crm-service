@@ -5,6 +5,7 @@ import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.DailyTransactionRepository;
 import com.cablepulse.security.SecurityAuth;
+import com.cablepulse.security.WorkspaceAuthorizationService;
 import com.cablepulse.service.PaymentProcessingService;
 import com.cablepulse.util.EtagSupport;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +16,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -26,14 +28,17 @@ public class DashboardController {
     private final CustomerRepository customerRepository;
     private final DailyTransactionRepository dailyTransactionRepository;
     private final CustomerLedgerRepository customerLedgerRepository;
+    private final WorkspaceAuthorizationService workspaceAuthorizationService;
 
     public DashboardController(
             CustomerRepository customerRepository,
             DailyTransactionRepository dailyTransactionRepository,
-            CustomerLedgerRepository customerLedgerRepository) {
+            CustomerLedgerRepository customerLedgerRepository,
+            WorkspaceAuthorizationService workspaceAuthorizationService) {
         this.customerRepository = customerRepository;
         this.dailyTransactionRepository = dailyTransactionRepository;
         this.customerLedgerRepository = customerLedgerRepository;
+        this.workspaceAuthorizationService = workspaceAuthorizationService;
     }
 
     @GetMapping("/metrics")
@@ -57,22 +62,38 @@ public class DashboardController {
     }
 
     private DashboardData buildDashboardMetrics(boolean includeFinancialSummary) {
-        long totalCustomers = customerRepository.count();
-        long pendingCustomers = customerRepository.countPendingCustomers();
+        String workspaceId = SecurityAuth.requireWorkspaceId();
+        long totalCustomers;
+        long pendingCustomers;
+
+        if (SecurityAuth.isOwner()) {
+            totalCustomers = customerRepository.countByWorkspaceId(workspaceId);
+            pendingCustomers = customerRepository.countPendingCustomersByWorkspaceId(workspaceId);
+        } else {
+            Set<String> territoryIds = workspaceAuthorizationService.resolveAccessibleTerritoryIds();
+            totalCustomers = territoryIds.stream()
+                    .mapToLong(customerRepository::countByTerritory_TerritoryId)
+                    .sum();
+            pendingCustomers = territoryIds.stream()
+                    .mapToLong(customerRepository::countPendingCustomersByTerritoryId)
+                    .sum();
+        }
+
         CustomerSummary customerSummary = new CustomerSummary(totalCustomers, pendingCustomers);
 
         FinancialSummary financialSummary = includeFinancialSummary
-                ? buildFinancialSummaryForCurrentMonth(YearMonth.now())
+                ? buildFinancialSummaryForCurrentMonth(workspaceId, YearMonth.now())
                 : null;
 
         return new DashboardData(customerSummary, financialSummary);
     }
 
-    private FinancialSummary buildFinancialSummaryForCurrentMonth(YearMonth billingMonth) {
+    private FinancialSummary buildFinancialSummaryForCurrentMonth(String workspaceId, YearMonth billingMonth) {
         BigDecimal amountPaid = dailyTransactionRepository
-                .sumAmountCollectedForCalendarMonth(billingMonth);
+                .sumAmountCollectedForCalendarMonth(workspaceId, billingMonth);
 
         BigDecimal amountPending = customerLedgerRepository.sumDueAmountForBillingPeriod(
+                workspaceId,
                 billingMonth.getYear(),
                 billingMonthNames(billingMonth));
         if (amountPending == null) {

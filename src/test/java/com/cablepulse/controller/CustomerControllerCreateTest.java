@@ -8,7 +8,9 @@ import com.cablepulse.repository.ConnectionProviderRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.EmployeeRepository;
 import com.cablepulse.repository.TerritoryRepository;
+import com.cablepulse.repository.WorkspaceRepository;
 import com.cablepulse.testsupport.TestDatabaseCleaner;
+import com.cablepulse.testsupport.TestWorkspaceSupport;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +54,12 @@ class CustomerControllerCreateTest {
     @Autowired
     private TestDatabaseCleaner testDatabaseCleaner;
 
+    @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private TestWorkspaceSupport workspaceSupport;
+
     @MockBean
     private FirebaseAuth firebaseAuth;
 
@@ -63,10 +71,11 @@ class CustomerControllerCreateTest {
     void setUp() throws Exception {
         e2eId = UUID.randomUUID().toString();
         sessionId = UUID.randomUUID().toString();
-        testDatabaseCleaner.wipeCoreWorkspaceData();
+        testDatabaseCleaner.wipeAndSeedDefaultWorkspace(
+                workspaceRepository, employeeRepository, workspaceSupport);
 
         territoryId = "ter_" + UUID.randomUUID().toString().replace("-", "");
-        territoryRepository.save(new Territory(territoryId, "Kolamuru"));
+        territoryRepository.save(workspaceSupport.territory(territoryId, "Kolamuru"));
 
         FirebaseToken firebaseToken = mock(FirebaseToken.class);
         when(firebaseToken.getUid()).thenReturn("owner-uid");
@@ -127,6 +136,7 @@ class CustomerControllerCreateTest {
 
         Employee collectionBoy = new Employee("collection-boy-uid", "Field Agent", EmployeeRole.COLLECTION_BOY);
         collectionBoy.setAssignedVillages(java.util.List.of("Kolamuru"));
+        collectionBoy.setWorkspaceId(TestWorkspaceSupport.WORKSPACE_ID);
         employeeRepository.save(collectionBoy);
 
         mockMvc.perform(post("/api/v1/customers")
@@ -201,8 +211,9 @@ class CustomerControllerCreateTest {
     @Test
     void createCustomer_whenSerialOneTakenInOtherTerritory_returnsCreated() throws Exception {
         String otherTerritoryId = "ter_" + UUID.randomUUID().toString().replace("-", "");
-        Territory other = territoryRepository.save(new Territory(otherTerritoryId, "Other Village"));
-        customerRepository.save(new Customer(
+        Territory other = territoryRepository.save(
+                workspaceSupport.territory(otherTerritoryId, "Other Village"));
+        Customer existing = new Customer(
                 "cust_existing_serial_1",
                 1,
                 "Existing Elsewhere",
@@ -211,7 +222,9 @@ class CustomerControllerCreateTest {
                 null,
                 null,
                 other,
-                null));
+                null);
+        existing.setWorkspaceId(TestWorkspaceSupport.WORKSPACE_ID);
+        customerRepository.save(existing);
 
         mockMvc.perform(post("/api/v1/customers")
                         .header("Authorization", "Bearer test-token")

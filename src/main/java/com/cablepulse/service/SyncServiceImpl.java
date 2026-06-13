@@ -4,6 +4,8 @@ import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.model.*;
 import com.cablepulse.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.cablepulse.security.SecurityAuth;
+import com.cablepulse.security.WorkspaceAuthorizationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +20,7 @@ public class SyncServiceImpl implements SyncService {
     private final CustomerRepository customerRepository;
     private final EmployeeRepository employeeRepository;
     private final PaymentProcessingService paymentProcessingService;
+    private final WorkspaceAuthorizationService workspaceAuthorizationService;
     private final ObjectMapper objectMapper;
 
     public SyncServiceImpl(
@@ -25,11 +28,13 @@ public class SyncServiceImpl implements SyncService {
             CustomerRepository customerRepository,
             EmployeeRepository employeeRepository,
             PaymentProcessingService paymentProcessingService,
+            WorkspaceAuthorizationService workspaceAuthorizationService,
             ObjectMapper objectMapper) {
         this.offlineSyncQueueRepository = offlineSyncQueueRepository;
         this.customerRepository = customerRepository;
         this.employeeRepository = employeeRepository;
         this.paymentProcessingService = paymentProcessingService;
+        this.workspaceAuthorizationService = workspaceAuthorizationService;
         this.objectMapper = objectMapper;
     }
 
@@ -85,6 +90,7 @@ public class SyncServiceImpl implements SyncService {
 
                 customerRepository.findById(customerId)
                         .orElseThrow(() -> new NoSuchElementException("Customer not found: " + customerId));
+                workspaceAuthorizationService.assertCustomerAccess(customerId);
 
                 List<String> months = extractMonths(payloadMap);
                 if (months.isEmpty()) {
@@ -177,17 +183,6 @@ public class SyncServiceImpl implements SyncService {
     }
 
     private Employee resolveFieldAgent(String agentId) {
-        if (agentId != null) {
-            Employee found = employeeRepository.findById(agentId).orElse(null);
-            if (found != null) {
-                return found;
-            }
-        }
-        List<Employee> employees = employeeRepository.findAll();
-        if (!employees.isEmpty()) {
-            return employees.get(0);
-        }
-        Employee systemAgent = new Employee("sys-agent", "System Sync Agent", EmployeeRole.COLLECTION_BOY);
-        return employeeRepository.save(systemAgent);
+        return workspaceAuthorizationService.requireFieldAgentInWorkspace(agentId, employeeRepository);
     }
 }

@@ -36,4 +36,12 @@ public final class SecurityAuth {
     public static boolean isOwner() {
         return hasRole("OWNER");
     }
+
+    public static String currentWorkspaceId() {
+        return TenantContext.workspaceId();
+    }
+
+    public static String requireWorkspaceId() {
+        return TenantContext.requireWorkspaceId();
+    }
 }

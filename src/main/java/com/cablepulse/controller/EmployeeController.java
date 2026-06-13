@@ -3,9 +3,12 @@ package com.cablepulse.controller;
 import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.exception.EmployeeNotFoundException;
 import com.cablepulse.model.Employee;
+import com.cablepulse.model.Employee;
+import com.cablepulse.model.EmployeeRole;
 import com.cablepulse.repository.EmployeeRepository;
 import com.cablepulse.service.EmployeeManagementService;
 import com.cablepulse.service.EmployeeProfileService;
+import com.cablepulse.security.SecurityAuth;
 import com.cablepulse.util.EtagSupport;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -39,7 +42,8 @@ public class EmployeeController {
     @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_EmployeeList> listEmployees(
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
-        List<EmployeeDTO> employees = employeeRepository.findAll().stream()
+        List<EmployeeDTO> employees = employeeRepository
+                .findByWorkspaceId(SecurityAuth.requireWorkspaceId()).stream()
                 .map(employeeManagementService::toEmployeeDto)
                 .collect(Collectors.toList());
 
@@ -97,6 +101,22 @@ public class EmployeeController {
         return ResponseEntity.ok(response);
     }
 
+    @PatchMapping("/{employeeId}")
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<StandardResponse_EmployeeData> updateEmployee(
+            @PathVariable String employeeId,
+            @Valid @RequestBody UpdateEmployeeRequestDto requestDto) {
+        Employee saved = employeeManagementService.updateEmployee(employeeId, requestDto);
+
+        StandardResponse_EmployeeData response = new StandardResponse_EmployeeData(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                employeeManagementService.toEmployeeDto(saved)
+        );
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping("/{employeeId}")
     @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_Void> deleteEmployee(@PathVariable String employeeId) {
@@ -130,6 +150,11 @@ public class EmployeeController {
         String employeeId = SecurityContextHolder.getContext().getAuthentication().getName();
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new EmployeeNotFoundException("Employee not found for current session"));
+
+        if (employee.getRole() == EmployeeRole.OWNER) {
+            throw new IllegalArgumentException(
+                    "Owner accounts cannot delete themselves. Remove team members from Team settings instead.");
+        }
 
         employeeRepository.delete(employee);
 
