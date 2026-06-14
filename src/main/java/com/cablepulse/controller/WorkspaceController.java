@@ -199,7 +199,16 @@ public class WorkspaceController {
             BigDecimal rate = c.getCustomRateOverride() != null ? c.getCustomRateOverride() :
                     (c.getGlobalPlan() != null ? c.getGlobalPlan().getMonthlyRate() : BigDecimal.ZERO);
             BigDecimal balanceDue = balanceByCustomerId.getOrDefault(c.getCustomerId(), BigDecimal.ZERO);
-            String paymentStatus = CustomerBalanceService.paymentStatusFromBalance(balanceDue);
+            boolean hasLedger = balanceByCustomerId.containsKey(c.getCustomerId());
+            String paymentStatus;
+            if (!hasLedger) {
+                paymentStatus = "UNPAID";
+                if (rate.compareTo(BigDecimal.ZERO) > 0) {
+                    balanceDue = rate;
+                }
+            } else {
+                paymentStatus = CustomerBalanceService.paymentStatusFromBalance(balanceDue);
+            }
 
             String boxNumber = c.getBoxNumber();
             String cardNumber = c.getCardNumber();

@@ -143,7 +143,15 @@ public class CustomerService {
                 ? customer.getTerritory().getLocationName()
                 : "";
 
-        String paymentStatus = CustomerBalanceService.paymentStatusFromBalance(balanceDue);
+        String paymentStatus;
+        if (!customerLedgerRepository.existsByCustomer_CustomerId(customer.getCustomerId())) {
+            paymentStatus = "UNPAID";
+            if (monthlyRate.compareTo(BigDecimal.ZERO) > 0) {
+                balanceDue = monthlyRate;
+            }
+        } else {
+            paymentStatus = CustomerBalanceService.paymentStatusFromBalance(balanceDue);
+        }
 
         String mobileNumber = customer.getMobileNumber();
         if (!workspaceAuthorizationService.canViewSensitiveCustomerFields()) {

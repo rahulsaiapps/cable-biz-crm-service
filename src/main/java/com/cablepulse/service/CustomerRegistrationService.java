@@ -2,8 +2,11 @@ package com.cablepulse.service;
 
 import com.cablepulse.dto.CreateCustomerRequestDto;
 import com.cablepulse.model.Customer;
+import com.cablepulse.model.CustomerLedger;
 import com.cablepulse.model.GlobalPlan;
+import com.cablepulse.model.LedgerStatus;
 import com.cablepulse.model.Territory;
+import com.cablepulse.repository.CustomerLedgerRepository;
 import com.cablepulse.repository.CustomerRepository;
 import com.cablepulse.repository.GlobalPlanRepository;
 import com.cablepulse.repository.TerritoryRepository;
@@ -19,6 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.YearMonth;
 import java.util.UUID;
 
 @Service
@@ -28,6 +33,7 @@ public class CustomerRegistrationService {
     private static final int MAX_SERIAL_ALLOCATION_ATTEMPTS = 8;
 
     private final CustomerRepository customerRepository;
+    private final CustomerLedgerRepository customerLedgerRepository;
     private final TerritoryRepository territoryRepository;
     private final GlobalPlanRepository globalPlanRepository;
     private final WorkspaceAuthorizationService workspaceAuthorizationService;
@@ -35,10 +41,12 @@ public class CustomerRegistrationService {
 
     public CustomerRegistrationService(
             CustomerRepository customerRepository,
+            CustomerLedgerRepository customerLedgerRepository,
             TerritoryRepository territoryRepository,
             GlobalPlanRepository globalPlanRepository,
             WorkspaceAuthorizationService workspaceAuthorizationService) {
         this.customerRepository = customerRepository;
+        this.customerLedgerRepository = customerLedgerRepository;
         this.territoryRepository = territoryRepository;
         this.globalPlanRepository = globalPlanRepository;
         this.workspaceAuthorizationService = workspaceAuthorizationService;
@@ -109,7 +117,46 @@ public class CustomerRegistrationService {
                 territory,
                 matchedPlan);
         customer.setWorkspaceId(territory.getWorkspaceId());
-        return customerRepository.save(customer);
+        Customer saved = customerRepository.save(customer);
+        createOpeningLedgerIfBillable(saved, request);
+        return saved;
+    }
+
+    private void createOpeningLedgerIfBillable(Customer customer, CreateCustomerRequestDto request) {
+        BigDecimal rate = resolveMonthlyRate(customer, request);
+        if (rate == null || rate.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        YearMonth billingPeriod = YearMonth.now();
+        String billingMonth = PaymentProcessingService.normalizeMonth(
+                billingPeriod.getMonth().name());
+
+        CustomerLedger ledger = new CustomerLedger(
+                billingMonth,
+                billingPeriod.getYear(),
+                LedgerStatus.UNPAID,
+                BigDecimal.ZERO,
+                rate,
+                customer);
+        customerLedgerRepository.save(ledger);
+    }
+
+    private static BigDecimal resolveMonthlyRate(Customer customer, CreateCustomerRequestDto request) {
+        if (request.getPlanMonthlyRate() != null
+                && request.getPlanMonthlyRate().compareTo(BigDecimal.ZERO) > 0) {
+            return request.getPlanMonthlyRate();
+        }
+        if (customer.getCustomRateOverride() != null
+                && customer.getCustomRateOverride().compareTo(BigDecimal.ZERO) > 0) {
+            return customer.getCustomRateOverride();
+        }
+        if (customer.getGlobalPlan() != null
+                && customer.getGlobalPlan().getMonthlyRate() != null
+                && customer.getGlobalPlan().getMonthlyRate().compareTo(BigDecimal.ZERO) > 0) {
+            return customer.getGlobalPlan().getMonthlyRate();
+        }
+        return null;
     }
 
     private String resolvePlanId(String planName) {

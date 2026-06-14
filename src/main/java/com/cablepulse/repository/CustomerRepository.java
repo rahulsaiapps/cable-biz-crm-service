@@ -17,12 +17,17 @@ public interface CustomerRepository extends JpaRepository<Customer, String> {
     @Query("""
             SELECT COUNT(DISTINCT c.customerId) FROM Customer c
             WHERE c.workspaceId = :workspaceId
-              AND ((c.globalPlan IS NULL AND c.customRateOverride IS NULL)
-               OR EXISTS (
-                   SELECT 1 FROM CustomerLedger l
-                   WHERE l.customer.customerId = c.customerId
-                     AND l.dueAmount > 0
-               ))
+              AND (
+                  NOT EXISTS (
+                      SELECT 1 FROM CustomerLedger l
+                      WHERE l.customer.customerId = c.customerId
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM CustomerLedger l
+                      WHERE l.customer.customerId = c.customerId
+                        AND l.dueAmount > 0
+                  )
+              )
             """)
     long countPendingCustomersByWorkspaceId(@Param("workspaceId") String workspaceId);
 
@@ -76,6 +81,10 @@ public interface CustomerRepository extends JpaRepository<Customer, String> {
                     SELECT COUNT(*) FROM customers c
                     WHERE c.territory_id = :territoryId
                       AND c.is_deleted = false
+                      AND EXISTS (
+                          SELECT 1 FROM customer_ledgers l
+                          WHERE l.customer_id = c.customer_id
+                      )
                       AND COALESCE((
                           SELECT SUM(l.due_amount) FROM customer_ledgers l
                           WHERE l.customer_id = c.customer_id
@@ -89,10 +98,16 @@ public interface CustomerRepository extends JpaRepository<Customer, String> {
                     SELECT COUNT(*) FROM customers c
                     WHERE c.territory_id = :territoryId
                       AND c.is_deleted = false
-                      AND COALESCE((
-                          SELECT SUM(l.due_amount) FROM customer_ledgers l
-                          WHERE l.customer_id = c.customer_id
-                      ), 0) > 0
+                      AND (
+                          NOT EXISTS (
+                              SELECT 1 FROM customer_ledgers l
+                              WHERE l.customer_id = c.customer_id
+                          )
+                          OR COALESCE((
+                              SELECT SUM(l.due_amount) FROM customer_ledgers l
+                              WHERE l.customer_id = c.customer_id
+                          ), 0) > 0
+                      )
                     """,
             nativeQuery = true)
     long countPendingCustomersByTerritoryId(@Param("territoryId") String territoryId);

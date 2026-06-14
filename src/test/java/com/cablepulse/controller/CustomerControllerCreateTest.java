@@ -264,8 +264,8 @@ class CustomerControllerCreateTest {
                         .header("X-Session-ID", sessionId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].customer_count").value(1))
-                .andExpect(jsonPath("$.data[0].active_count").value(1))
-                .andExpect(jsonPath("$.data[0].pending_count").value(0));
+                .andExpect(jsonPath("$.data[0].active_count").value(0))
+                .andExpect(jsonPath("$.data[0].pending_count").value(1));
     }
 
     @Test

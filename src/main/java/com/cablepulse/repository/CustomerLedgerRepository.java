@@ -15,6 +15,8 @@ public interface CustomerLedgerRepository extends JpaRepository<CustomerLedger, 
 
     List<CustomerLedger> findByCustomer_CustomerId(String customerId);
 
+    boolean existsByCustomer_CustomerId(String customerId);
+
     List<CustomerLedger> findByCustomer_CustomerIdAndBillingYearOrderByUpdatedAtDesc(String customerId, int billingYear);
 
     @Query("""
