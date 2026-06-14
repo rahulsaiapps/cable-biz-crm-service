@@ -1,5 +1,6 @@
 package com.cablepulse.controller;
 
+import com.cablepulse.dto.AddTerritoryBlockRequest;
 import com.cablepulse.dto.DtoClasses.*;
 import com.cablepulse.dto.ProviderRequestDto;
 import com.cablepulse.exception.ProviderCategoryAlreadyExistsException;
@@ -149,6 +150,29 @@ public class WorkspaceController {
             );
             return ResponseEntity.ok(response);
         });
+    }
+
+    @PostMapping("/territories/{id}/blocks")
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<StandardResponse_BlockNames> addTerritoryBlock(
+            @PathVariable("id") String id,
+            @Valid @RequestBody AddTerritoryBlockRequest request,
+            @RequestHeader("X-E2E-ID") UUID e2eId,
+            @RequestHeader("X-Session-ID") UUID sessionId) {
+
+        workspaceAuthorizationService.assertTerritoryAccess(id);
+
+        List<String> blockNames = territoryService.addBlockToTerritory(
+                id,
+                request.getBlockName());
+
+        StandardResponse_BlockNames response = new StandardResponse_BlockNames(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                blockNames
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping("/territories/active-locations")

@@ -48,6 +48,35 @@ public class TerritoryService {
     }
 
     @Transactional
+    public List<String> addBlockToTerritory(String territoryId, String blockName) {
+        String workspaceId = SecurityAuth.requireWorkspaceId();
+        Territory territory = territoryRepository.findById(territoryId.trim())
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException(
+                        "Territory not found: " + territoryId));
+
+        if (!workspaceId.equals(territory.getWorkspaceId())) {
+            throw new jakarta.persistence.EntityNotFoundException(
+                    "Territory not found: " + territoryId);
+        }
+
+        String trimmed = blockName.trim();
+        if (trimmed.isEmpty()) {
+            throw new IllegalArgumentException("Block name is required.");
+        }
+
+        boolean alreadyExists = territory.getBlocks().stream()
+                .anyMatch(block -> block.getBlockName().equalsIgnoreCase(trimmed));
+        if (!alreadyExists) {
+            territory.getBlocks().add(new TerritoryBlock(trimmed, territory));
+            territoryRepository.save(territory);
+        }
+
+        return territory.getBlocks().stream()
+                .map(TerritoryBlock::getBlockName)
+                .toList();
+    }
+
+    @Transactional
     public void softDeleteTerritory(String territoryId) {
         String workspaceId = SecurityAuth.requireWorkspaceId();
         Territory territory = territoryRepository.findById(territoryId.trim())

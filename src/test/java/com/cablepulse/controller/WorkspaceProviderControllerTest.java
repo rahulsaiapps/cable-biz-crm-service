@@ -205,6 +205,40 @@ class WorkspaceProviderControllerTest {
     }
 
     @Test
+    void addTerritoryBlock_appendsBlockToTerritory() throws Exception {
+        mockMvc.perform(post("/api/v1/workspace/providers")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"location_name": "Kolamuru"}
+                                """))
+                .andExpect(status().isCreated());
+
+        String territoryId = territoryRepository.findAll().get(0).getTerritoryId();
+
+        mockMvc.perform(post("/api/v1/workspace/territories/" + territoryId + "/blocks")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"block_name": "Ward 5"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data[0]").value("Ward 5"));
+
+        mockMvc.perform(get("/api/v1/workspace/territories/" + territoryId + "/blocks")
+                        .header("Authorization", "Bearer test-token")
+                        .header("X-E2E-ID", e2eId)
+                        .header("X-Session-ID", sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0]").value("Ward 5"));
+    }
+
+    @Test
     void createProvider_returnsConflictWhenCategoryAlreadyExists() throws Exception {
         mockMvc.perform(post("/api/v1/workspace/providers")
                         .header("Authorization", "Bearer test-token")
