@@ -193,22 +193,23 @@ public class WorkspaceController {
                 SecurityAuth.requireWorkspaceId(), locationId);
         List<String> customerIds = customers.stream().map(Customer::getCustomerId).toList();
         Map<String, BigDecimal> balanceByCustomerId = customerBalanceService.sumDueAmountByCustomerIds(customerIds);
+        Map<String, CustomerBalanceService.CurrentMonthLedger> currentMonthByCustomerId =
+                customerBalanceService.currentMonthLedgerByCustomerIds(customerIds);
 
         List<WorkspaceCustomerDTO> dtos = customers.stream().map(c -> {
             String planName = c.getGlobalPlan() != null ? c.getGlobalPlan().getPlanName() : "No Plan";
             BigDecimal rate = c.getCustomRateOverride() != null ? c.getCustomRateOverride() :
                     (c.getGlobalPlan() != null ? c.getGlobalPlan().getMonthlyRate() : BigDecimal.ZERO);
             BigDecimal balanceDue = balanceByCustomerId.getOrDefault(c.getCustomerId(), BigDecimal.ZERO);
-            boolean hasLedger = balanceByCustomerId.containsKey(c.getCustomerId());
-            String paymentStatus;
-            if (!hasLedger) {
-                paymentStatus = "UNPAID";
-                if (rate.compareTo(BigDecimal.ZERO) > 0) {
-                    balanceDue = rate;
-                }
-            } else {
-                paymentStatus = CustomerBalanceService.paymentStatusFromBalance(balanceDue);
-            }
+            boolean hasLedger = balanceByCustomerId.containsKey(c.getCustomerId())
+                    || currentMonthByCustomerId.containsKey(c.getCustomerId());
+            var summary = customerBalanceService.summarizeCustomerPayment(
+                    hasLedger,
+                    rate,
+                    balanceDue,
+                    currentMonthByCustomerId.get(c.getCustomerId()));
+            balanceDue = summary.balanceDue();
+            String paymentStatus = summary.paymentStatus();
 
             String boxNumber = c.getBoxNumber();
             String cardNumber = c.getCardNumber();

@@ -1,6 +1,7 @@
 package com.cablepulse.service;
 
 import com.cablepulse.dto.DtoClasses.CreatePlanRequestDto;
+import com.cablepulse.dto.DtoClasses.UpdatePlanRequestDto;
 import com.cablepulse.model.ConnectionProvider;
 import com.cablepulse.model.GlobalPlan;
 import com.cablepulse.repository.ConnectionProviderRepository;
@@ -59,5 +60,15 @@ public class PlanService {
         GlobalPlan plan = globalPlanRepository.findByPlanIdAndWorkspaceId(planId, workspaceId)
                 .orElseThrow(() -> new EntityNotFoundException("Plan not found: " + planId));
         globalPlanRepository.delete(plan);
+    }
+
+    @Transactional
+    public GlobalPlan updatePlan(String planId, UpdatePlanRequestDto requestDto) {
+        String workspaceId = SecurityAuth.requireWorkspaceId();
+        GlobalPlan plan = globalPlanRepository.findByPlanIdAndWorkspaceId(planId, workspaceId)
+                .orElseThrow(() -> new EntityNotFoundException("Plan not found: " + planId));
+        plan.setPlanName(requestDto.name().trim());
+        plan.setMonthlyRate(BigDecimal.valueOf(requestDto.price()));
+        return globalPlanRepository.save(plan);
     }
 }

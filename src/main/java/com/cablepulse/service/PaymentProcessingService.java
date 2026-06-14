@@ -69,18 +69,21 @@ public class PaymentProcessingService {
                     .findFirst();
 
             if (existingLedger.isPresent()) {
-                CustomerLedger ledger = existingLedger.get();
-                ledger.setStatus(LedgerStatus.PAID);
-                ledger.setPaidAmount(ledger.getPaidAmount().add(amountPerMonth));
-                ledger.setDueAmount(BigDecimal.ZERO);
-                customerLedgerRepository.save(ledger);
+                applyPaymentToLedger(existingLedger.get(), amountPerMonth, customer);
+                customerLedgerRepository.save(existingLedger.get());
             } else {
+                BigDecimal monthlyRate = resolveMonthlyRate(customer);
+                if (monthlyRate.compareTo(BigDecimal.ZERO) <= 0) {
+                    monthlyRate = amountPerMonth;
+                }
+                BigDecimal newPaid = amountPerMonth.min(monthlyRate);
+                BigDecimal newDue = monthlyRate.subtract(newPaid).max(BigDecimal.ZERO);
                 CustomerLedger ledger = new CustomerLedger(
                         month,
                         year,
-                        LedgerStatus.PAID,
-                        amountPerMonth,
-                        BigDecimal.ZERO,
+                        resolveLedgerStatus(newPaid, newDue),
+                        newPaid,
+                        newDue,
                         customer
                 );
                 customerLedgerRepository.save(ledger);
@@ -96,6 +99,52 @@ public class PaymentProcessingService {
                 fieldAgent
         );
         dailyTransactionRepository.save(transaction);
+    }
+
+    private void applyPaymentToLedger(
+            CustomerLedger ledger,
+            BigDecimal amountApplied,
+            Customer customer) {
+        BigDecimal monthlyExpected = ledger.getPaidAmount().add(ledger.getDueAmount());
+        if (monthlyExpected.compareTo(BigDecimal.ZERO) <= 0) {
+            monthlyExpected = resolveMonthlyRate(customer);
+        }
+        if (monthlyExpected.compareTo(BigDecimal.ZERO) <= 0) {
+            monthlyExpected = amountApplied;
+        }
+
+        BigDecimal newPaid = ledger.getPaidAmount().add(amountApplied);
+        if (newPaid.compareTo(monthlyExpected) > 0) {
+            newPaid = monthlyExpected;
+        }
+        BigDecimal newDue = monthlyExpected.subtract(newPaid).max(BigDecimal.ZERO);
+
+        ledger.setPaidAmount(newPaid);
+        ledger.setDueAmount(newDue);
+        ledger.setStatus(resolveLedgerStatus(newPaid, newDue));
+    }
+
+    private static LedgerStatus resolveLedgerStatus(BigDecimal paidAmount, BigDecimal dueAmount) {
+        if (dueAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return LedgerStatus.PAID;
+        }
+        if (paidAmount.compareTo(BigDecimal.ZERO) > 0) {
+            return LedgerStatus.PARTIAL;
+        }
+        return LedgerStatus.UNPAID;
+    }
+
+    static BigDecimal resolveMonthlyRate(Customer customer) {
+        if (customer.getCustomRateOverride() != null
+                && customer.getCustomRateOverride().compareTo(BigDecimal.ZERO) > 0) {
+            return customer.getCustomRateOverride();
+        }
+        if (customer.getGlobalPlan() != null
+                && customer.getGlobalPlan().getMonthlyRate() != null
+                && customer.getGlobalPlan().getMonthlyRate().compareTo(BigDecimal.ZERO) > 0) {
+            return customer.getGlobalPlan().getMonthlyRate();
+        }
+        return BigDecimal.ZERO;
     }
 
     public static String normalizeMonth(String month) {

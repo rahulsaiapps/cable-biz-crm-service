@@ -176,6 +176,11 @@ public class DtoClasses {
         @NotBlank String provider
     ) {}
 
+    public record UpdatePlanRequestDto(
+        @NotBlank String name,
+        @NotNull @Positive Integer price
+    ) {}
+
     public record PlanCreatedData(
         @JsonProperty("createdPlanId") String createdPlanId
     ) {}
@@ -368,7 +373,10 @@ public class DtoClasses {
         BigDecimal monthlyRate,
         String paymentStatus,
         BigDecimal balanceDue,
-        @JsonProperty("phone_number") String phoneNumber
+        @JsonProperty("phone_number") String phoneNumber,
+        @JsonProperty("box_number") String boxNumber,
+        @JsonProperty("card_number") String cardNumber,
+        @JsonProperty("connection_type") String connectionType
     ) {}
 
     public record StandardResponse_CustomerProfile(

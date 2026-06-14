@@ -64,25 +64,39 @@ public class FinanceController {
     @GetMapping("/metrics")
     @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<FinanceMetricsDTO> getFinanceMetrics(
-            @RequestParam(value = "interval", defaultValue = "6M") String interval,
+            @RequestParam(value = "interval", required = false, defaultValue = "6M") String interval,
+            @RequestParam(value = "startDate", required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(value = "endDate", required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
-        FinanceMetricsDTO metrics = financeAnalyticsService.getMetrics(interval);
+        FinanceMetricsDTO metrics = financeAnalyticsService.getMetrics(interval, startDate, endDate);
         return EtagSupport.respondWithEtag(ifNoneMatch, metrics, () -> ResponseEntity.ok(metrics));
     }
 
     @GetMapping("/expenses")
     @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<List<ExpenseDistributionItemDTO>> getExpenseDistribution(
+            @RequestParam(value = "startDate", required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(value = "endDate", required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
-        List<ExpenseDistributionItemDTO> items = financeAnalyticsService.getExpenseDistribution();
+        List<ExpenseDistributionItemDTO> items =
+                financeAnalyticsService.getExpenseDistribution(startDate, endDate);
         return EtagSupport.respondWithEtag(ifNoneMatch, items, () -> ResponseEntity.ok(items));
     }
 
     @GetMapping("/performance")
     @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<List<MonthlyPerformanceDTO>> getMonthlyPerformance(
+            @RequestParam(value = "startDate", required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(value = "endDate", required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
-        List<MonthlyPerformanceDTO> items = financeAnalyticsService.getMonthlyPerformance();
+        List<MonthlyPerformanceDTO> items =
+                financeAnalyticsService.getMonthlyPerformance(startDate, endDate);
         return EtagSupport.respondWithEtag(ifNoneMatch, items, () -> ResponseEntity.ok(items));
     }
 

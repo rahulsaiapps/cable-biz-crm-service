@@ -35,6 +35,18 @@ public interface CustomerLedgerRepository extends JpaRepository<CustomerLedger, 
     BigDecimal sumDueAmountForCustomer(@Param("customerId") String customerId);
 
     @Query("""
+            SELECT l.customer.customerId, l.paidAmount, l.dueAmount
+            FROM CustomerLedger l
+            WHERE l.customer.customerId IN :customerIds
+              AND l.billingYear = :year
+              AND UPPER(l.billingMonth) = :month
+            """)
+    List<Object[]> findCurrentMonthLedgerByCustomerIds(
+            @Param("customerIds") Collection<String> customerIds,
+            @Param("year") int year,
+            @Param("month") String month);
+
+    @Query("""
             SELECT COALESCE(SUM(l.dueAmount), 0)
             FROM CustomerLedger l
             WHERE l.billingYear = :year

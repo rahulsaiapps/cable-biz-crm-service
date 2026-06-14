@@ -70,6 +70,22 @@ public class PlanController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<StandardResponse_Void> updatePlan(
+            @PathVariable("id") String id,
+            @Valid @RequestBody UpdatePlanRequestDto requestDto) {
+        planService.updatePlan(id, requestDto);
+
+        StandardResponse_Void response = new StandardResponse_Void(
+                LocalDateTime.now(),
+                "SUCCESS",
+                null,
+                null
+        );
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<StandardResponse_Void> deletePlan(@PathVariable("id") String id) {

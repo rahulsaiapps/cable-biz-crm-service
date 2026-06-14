@@ -18,11 +18,17 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.YearMonth;
 import java.time.format.TextStyle;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 @Service
 public class FinanceAnalyticsService {
+
+    private static final int[] EXPENSE_COLORS = {
+            0xFF6366F1, 0xFF8B5CF6, 0xFFEC4899, 0xFF14B8A6, 0xFFF59E0B, 0xFF3B82F6
+    };
 
     private final DailyTransactionRepository dailyTransactionRepository;
     private final DailyExpenseRepository dailyExpenseRepository;
@@ -41,40 +47,37 @@ public class FinanceAnalyticsService {
     }
 
     @Transactional(readOnly = true)
-    public FinanceMetricsDTO getMetrics(String interval) {
-        LocalDate end = LocalDate.now();
-        LocalDate start = switch (interval != null ? interval.toUpperCase(Locale.ROOT) : "6M") {
-            case "1M" -> end.minusMonths(1);
-            case "3M" -> end.minusMonths(3);
-            case "1Y" -> end.minusYears(1);
-            default -> end.minusMonths(6);
-        };
+    public FinanceMetricsDTO getMetrics(String interval, LocalDate startDate, LocalDate endDate) {
+        LocalDate end = endDate != null ? endDate : LocalDate.now();
+        LocalDate start = startDate != null ? startDate : resolveIntervalStart(interval, end);
 
-        BigDecimal revenue = sumTransactionsBetween(start.atStartOfDay(), end.atTime(LocalTime.MAX));
-        BigDecimal expenses = sumExpensesBetween(start.atStartOfDay(), end.atTime(LocalTime.MAX));
-        BigDecimal settlements = sumSettlementsBetween(start.atStartOfDay(), end.atTime(LocalTime.MAX));
-        BigDecimal netProfit = revenue.subtract(expenses).subtract(settlements);
+        if (start.isAfter(end)) {
+            throw new IllegalArgumentException("startDate must be on or before endDate");
+        }
+
+        BigDecimal netProfit = netProfitBetween(start, end);
+        long periodDays = ChronoUnit.DAYS.between(start, end) + 1;
+        LocalDate prevEnd = start.minusDays(1);
+        LocalDate prevStart = prevEnd.minusDays(periodDays - 1);
+        BigDecimal previousNetProfit = netProfitBetween(prevStart, prevEnd);
 
         return new FinanceMetricsDTO(
                 netProfit.intValue(),
-                "+12% vs last quarter",
-                "Consolidated operational hub revenue generation and vendor outlays."
+                formatTrend(netProfit, previousNetProfit, periodDays),
+                ""
         );
     }
 
     @Transactional(readOnly = true)
-    public List<ExpenseDistributionItemDTO> getExpenseDistribution() {
+    public List<ExpenseDistributionItemDTO> getExpenseDistribution(LocalDate startDate, LocalDate endDate) {
         String workspaceId = SecurityAuth.requireWorkspaceId();
-        LocalDateTime start = LocalDate.now().minusYears(5).atStartOfDay();
-        LocalDateTime end = LocalDate.now().atTime(LocalTime.MAX);
-        List<DailyExpense> expenses =
-                dailyExpenseRepository.findByWorkspaceIdAndLoggedAtBetween(workspaceId, start, end);
+        LocalDate end = endDate != null ? endDate : LocalDate.now();
+        LocalDate start = startDate != null ? startDate : end.minusMonths(6);
+
+        List<DailyExpense> expenses = dailyExpenseRepository.findByWorkspaceIdAndLoggedAtBetween(
+                workspaceId, start.atStartOfDay(), end.atTime(LocalTime.MAX));
         if (expenses.isEmpty()) {
-            return List.of(
-                    new ExpenseDistributionItemDTO("Cable Wire Maintenance", 60.0, 0xFF1A3A6B),
-                    new ExpenseDistributionItemDTO("Staff Salaries", 30.0, 0xFF455A64),
-                    new ExpenseDistributionItemDTO("Transport & Fuel", 10.0, 0xFF78909C)
-            );
+            return List.of();
         }
 
         Map<ExpenseCategory, BigDecimal> totals = new EnumMap<>(ExpenseCategory.class);
@@ -87,7 +90,6 @@ public class FinanceAnalyticsService {
             grandTotal = grandTotal.add(expense.getAmount());
         }
 
-        int[] colors = {0xFF1A3A6B, 0xFF455A64, 0xFF78909C, 0xFF546E7A, 0xFF37474F};
         int colorIndex = 0;
         List<ExpenseDistributionItemDTO> items = new ArrayList<>();
         for (Map.Entry<ExpenseCategory, BigDecimal> entry : totals.entrySet()) {
@@ -99,23 +101,40 @@ public class FinanceAnalyticsService {
             items.add(new ExpenseDistributionItemDTO(
                     formatCategoryLabel(entry.getKey()),
                     pct,
-                    colors[colorIndex++ % colors.length]
+                    EXPENSE_COLORS[colorIndex++ % EXPENSE_COLORS.length]
             ));
         }
+        items.sort(Comparator.comparingDouble(ExpenseDistributionItemDTO::percentage).reversed());
         return items;
     }
 
     @Transactional(readOnly = true)
-    public List<MonthlyPerformanceDTO> getMonthlyPerformance() {
+    public List<MonthlyPerformanceDTO> getMonthlyPerformance(LocalDate startDate, LocalDate endDate) {
+        LocalDate end = endDate != null ? endDate : LocalDate.now();
+        LocalDate start = startDate != null ? startDate : end.minusMonths(5).withDayOfMonth(1);
+
+        YearMonth cursor = YearMonth.from(start);
+        YearMonth last = YearMonth.from(end);
         List<MonthlyPerformanceDTO> result = new ArrayList<>();
-        LocalDate now = LocalDate.now();
-        for (int i = 5; i >= 0; i--) {
-            LocalDate monthStart = now.minusMonths(i).withDayOfMonth(1);
-            LocalDate monthEnd = monthStart.withDayOfMonth(monthStart.lengthOfMonth());
-            BigDecimal revenue = sumTransactionsBetween(monthStart.atStartOfDay(), monthEnd.atTime(LocalTime.MAX));
-            BigDecimal expenses = sumExpensesBetween(monthStart.atStartOfDay(), monthEnd.atTime(LocalTime.MAX));
-            String label = monthStart.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH).toUpperCase(Locale.ROOT);
+
+        while (!cursor.isAfter(last) && result.size() < 24) {
+            LocalDate monthStart = cursor.atDay(1);
+            LocalDate monthEnd = cursor.atEndOfMonth();
+            if (monthEnd.isBefore(start)) {
+                cursor = cursor.plusMonths(1);
+                continue;
+            }
+            LocalDate effectiveStart = monthStart.isBefore(start) ? start : monthStart;
+            LocalDate effectiveEnd = monthEnd.isAfter(end) ? end : monthEnd;
+
+            BigDecimal revenue = sumTransactionsBetween(
+                    effectiveStart.atStartOfDay(), effectiveEnd.atTime(LocalTime.MAX));
+            BigDecimal expenses = sumExpensesBetween(
+                    effectiveStart.atStartOfDay(), effectiveEnd.atTime(LocalTime.MAX));
+            String label = cursor.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH)
+                    .toUpperCase(Locale.ROOT);
             result.add(new MonthlyPerformanceDTO(label, revenue.intValue(), expenses.intValue()));
+            cursor = cursor.plusMonths(1);
         }
         return result;
     }
@@ -140,7 +159,7 @@ public class FinanceAnalyticsService {
     @Transactional(readOnly = true)
     public FinanceHealthDTO getSystemHealth() {
         long activeCustomers = customerRepository.countByWorkspaceId(SecurityAuth.requireWorkspaceId());
-        return new FinanceHealthDTO((int) activeCustomers, 99.9);
+        return new FinanceHealthDTO((int) activeCustomers, 0.0);
     }
 
     @Transactional(readOnly = true)
@@ -154,7 +173,44 @@ public class FinanceAnalyticsService {
                         || (c.getBlockName() != null && c.getBlockName().toLowerCase(Locale.ROOT)
                                 .contains(block.toLowerCase(Locale.ROOT))))
                 .count();
-        return count > 0 ? (int) count : 84;
+        return (int) count;
+    }
+
+    private BigDecimal netProfitBetween(LocalDate start, LocalDate end) {
+        BigDecimal revenue = sumTransactionsBetween(start.atStartOfDay(), end.atTime(LocalTime.MAX));
+        BigDecimal expenses = sumExpensesBetween(start.atStartOfDay(), end.atTime(LocalTime.MAX));
+        BigDecimal settlements = sumSettlementsBetween(start.atStartOfDay(), end.atTime(LocalTime.MAX));
+        return revenue.subtract(expenses).subtract(settlements);
+    }
+
+    private static LocalDate resolveIntervalStart(String interval, LocalDate end) {
+        return switch (interval != null ? interval.toUpperCase(Locale.ROOT) : "6M") {
+            case "1M" -> end.minusMonths(1);
+            case "3M" -> end.minusMonths(3);
+            case "1Y" -> end.minusYears(1);
+            default -> end.minusMonths(6);
+        };
+    }
+
+    private static String formatTrend(BigDecimal current, BigDecimal previous, long periodDays) {
+        if (current.compareTo(BigDecimal.ZERO) == 0 && previous.compareTo(BigDecimal.ZERO) == 0) {
+            return "";
+        }
+        if (previous.compareTo(BigDecimal.ZERO) == 0) {
+            return current.compareTo(BigDecimal.ZERO) > 0 ? "Up from prior period" : "";
+        }
+
+        BigDecimal change = current.subtract(previous)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(previous.abs(), 0, RoundingMode.HALF_UP);
+        String periodLabel = periodDays <= 31 ? "last month" : "prior period";
+        if (change.compareTo(BigDecimal.ZERO) > 0) {
+            return "+" + change.intValue() + "% vs " + periodLabel;
+        }
+        if (change.compareTo(BigDecimal.ZERO) < 0) {
+            return change.intValue() + "% vs " + periodLabel;
+        }
+        return "Flat vs " + periodLabel;
     }
 
     private BigDecimal sumTransactionsBetween(LocalDateTime start, LocalDateTime end) {

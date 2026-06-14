@@ -143,19 +143,23 @@ public class CustomerService {
                 ? customer.getTerritory().getLocationName()
                 : "";
 
-        String paymentStatus;
-        if (!customerLedgerRepository.existsByCustomer_CustomerId(customer.getCustomerId())) {
-            paymentStatus = "UNPAID";
-            if (monthlyRate.compareTo(BigDecimal.ZERO) > 0) {
-                balanceDue = monthlyRate;
-            }
-        } else {
-            paymentStatus = CustomerBalanceService.paymentStatusFromBalance(balanceDue);
-        }
+        boolean hasLedger = customerLedgerRepository.existsByCustomer_CustomerId(customer.getCustomerId());
+        var currentMonth = customerBalanceService
+                .currentMonthLedgerByCustomerIds(List.of(customer.getCustomerId()))
+                .get(customer.getCustomerId());
+        var summary = customerBalanceService.summarizeCustomerPayment(
+                hasLedger,
+                monthlyRate,
+                balanceDue,
+                currentMonth);
 
         String mobileNumber = customer.getMobileNumber();
+        String boxNumber = customer.getBoxNumber();
+        String cardNumber = customer.getCardNumber();
         if (!workspaceAuthorizationService.canViewSensitiveCustomerFields()) {
             mobileNumber = PiiMaskingUtil.maskPhone(mobileNumber);
+            boxNumber = PiiMaskingUtil.maskPhone(boxNumber);
+            cardNumber = PiiMaskingUtil.maskPhone(cardNumber);
         }
 
         return new CustomerProfileDTO(
@@ -167,9 +171,12 @@ public class CustomerService {
                 territoryName,
                 planName,
                 monthlyRate,
-                paymentStatus,
-                balanceDue,
-                mobileNumber
+                summary.paymentStatus(),
+                summary.balanceDue(),
+                mobileNumber,
+                boxNumber,
+                cardNumber,
+                customer.getConnectionType()
         );
     }
 }
